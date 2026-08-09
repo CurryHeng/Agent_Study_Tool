@@ -28,3 +28,4 @@ Desktop.ini
 # Server
 server/data/*.db
 server/data/*.db-journal
+server/data/
