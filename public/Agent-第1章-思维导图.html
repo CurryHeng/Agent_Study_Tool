@@ -1,0 +1,112 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI Agent 第1章 · 思维导图</title>
+<style>
+* { margin: 0; padding: 0; }
+#mindmap { display: block; width: 100vw; height: 100vh; }
+</style>
+<link rel="stylesheet" href="lib/markmap-toolbar.css">
+</head>
+<body>
+<svg id="mindmap"></svg>
+<script src="lib/d3.min.js"></script>
+<script src="lib/markmap-view.js"></script>
+<script src="lib/markmap-toolbar.js"></script>
+<script>
+const markdown = `# AI Agent 第1章 · Agent 概述
+
+## 核心公式
+- Agent = LLM + 上下文 + 工具
+- 大脑 + 眼睛 + 手脚
+- LLM: 理解意图、思考规划、做出判断
+- 上下文: 静态前缀 + 动态轨迹
+- 工具: 感知世界、执行操作
+
+## 观察空间与动作空间
+- 观察通道 → 模型能感知的信息
+- 动作接口 → 模型能执行的操作
+- 扩展眼睛和手脚是最主要的能力杠杆
+- Manus: 合并 Deep Research + Coding + Computer Use
+- OpenClaw: 本地优先，连接数字生活
+
+## 工具分类（五类）
+- 感知工具: 搜索、文件读取、API、数据库
+- 执行工具: 代码执行、文件操作、系统命令
+- 协作工具: 子Agent委托、人工确认、多Agent协调
+- 事件触发工具: 邮件、定时、Webhook
+- 用户沟通工具: 消息、语音、邮件
+
+## LLM: Agent 的大脑
+- 预训练 → 世界知识与语言能力
+- 后训练 → 固化决策策略
+- 内部思考: 行动前先规划推演
+- 模型即Agent: 工具调用内化为原生能力
+- Harness = 马具: 引导模型力量到正确方向
+- 三条学习路径
+  - 上下文适应（临场）
+  - 外部产物更新（可控积累）
+  - 模型参数更新（永久内化）
+
+## 上下文: Agent 的眼睛
+- 五大组成部分
+  - 系统提示词（岗位说明书）
+  - 工具定义（能力声明）
+  - 用户消息（任务输入）
+  - 模型回复（思考+内容+工具调用）
+  - 工具执行结果（闭环反馈）
+- 静态前缀: System Prompt + Tool Definitions
+- 动态轨迹: 交互历史持续增长
+- 消融实验: 去掉任何组件性能显著退化
+
+## ReAct 循环
+- 思考 → 行动 → 观察 → 循环
+- 轨迹 = 静态前缀 + 动态消息历史
+- 模型决策 → 框架执行 → 结果回传 → 再决策
+- 关键: 框架执行，模型只决策
+- 必须设置最大迭代次数
+
+## Harness 工程
+- Agent = Model + Harness
+- Harness 五功能
+  - Context（上下文）
+  - Tools（工具接口）
+  - Constrain（约束）
+  - Verify（验证）
+  - Correct（纠正）
+- 从"能做事"到"可靠地做事"
+- 工程范式演进
+  - 提示工程 → 上下文工程 → Harness工程
+  - → Loop工程 → Graph工程
+
+## 编排模式
+- 工作流: 确定性路径，预定义节点
+- 自主Agent: 动态决策，环境反馈驱动
+- 从简单到复杂: 先优化提示词，再工作流，最后自主Agent
+
+## 护栏与安全
+- 输入侧: 相关性、安全分类、内容审核、规则过滤
+- 执行侧: 工具风险评级
+- 输出侧: PII过滤、内容检查
+- 人工干预: 超过失败阈值 / 高风险操作`;
+
+(async () => {
+  const { markmap } = window;
+  const { Markmap, loadCSS, loadJS } = markmap;
+  const transformer = new markmap.Transformer();
+  const { root, features } = transformer.transform(markdown);
+  const { scripts, styles } = transformer.getUsedAssets(features);
+
+  const mm = Markmap.create("svg#mindmap", undefined, root);
+
+  const toolbar = new markmap.Toolbar();
+  toolbar.attach(mm);
+  const el = toolbar.render();
+  el.setAttribute("style", "position:absolute;bottom:20px;right:20px");
+  document.body.append(el);
+})();
+</script>
+</body>
+</html>

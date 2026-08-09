@@ -1,0 +1,130 @@
+/* ====== 移动端优化 ====== */
+
+body {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
+  touch-action: manipulation;
+}
+
+@media (max-width: 640px) {
+  button, a, input, select, textarea, label {
+    min-height: 44px;
+  }
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+  main {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+.overscroll-none {
+  overscroll-behavior: none;
+}
+
+@media (max-width: 480px) {
+  .stat-card-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  .hide-on-mobile {
+    display: none !important;
+  }
+}
+
+/* ====== 暗色模式 ====== */
+.dark body,
+body.dark {
+  color-scheme: dark;
+}
+
+.dark .bg-white {
+  background-color: #1e1e2e !important;
+}
+
+.dark .bg-slate-50 {
+  background-color: #181825 !important;
+}
+
+.dark .bg-gradient-to-br.from-slate-50 {
+  background-image: linear-gradient(to bottom right, #11111b, #1e1e2e) !important;
+}
+
+.dark .text-slate-800 {
+  color: #e2e8f0 !important;
+}
+
+.dark .text-slate-700 {
+  color: #cbd5e1 !important;
+}
+
+.dark .text-slate-600 {
+  color: #94a3b8 !important;
+}
+
+.dark .text-slate-500 {
+  color: #64748b !important;
+}
+
+.dark .text-slate-400 {
+  color: #475569 !important;
+}
+
+.dark .border-slate-200 {
+  border-color: #334155 !important;
+}
+
+.dark .border-slate-100 {
+  border-color: #1e293b !important;
+}
+
+.dark .bg-indigo-50 {
+  background-color: #1e1b4b !important;
+}
+
+.dark .from-indigo-600 {
+  --tw-gradient-from: #312e81 !important;
+}
+
+.dark .to-purple-700 {
+  --tw-gradient-to: #4c1d95 !important;
+}
+
+.dark .shadow-sm {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3) !important;
+}
+
+.dark input, .dark textarea, .dark select {
+  background-color: #1e1e2e !important;
+  color: #e2e8f0 !important;
+  border-color: #334155 !important;
+}
+
+.dark .hover\:bg-slate-50:hover {
+  background-color: #252540 !important;
+}
+
+.dark .hover\:bg-slate-100:hover {
+  background-color: #2a2a45 !important;
+}
+
+/* ====== 打印 ====== */
+@media print {
+  header, button, .no-print {
+    display: none !important;
+  }
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  .print-break {
+    page-break-before: always;
+  }
+  @page {
+    margin: 1.5cm;
+    size: A4;
+  }
+}
