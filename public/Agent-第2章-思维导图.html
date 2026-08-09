@@ -3,144 +3,37 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="X-UA-Compatible" content="ie=edge" />
 <title>AI Agent 第2章 · 上下文工程</title>
 <style>
 * { margin: 0; padding: 0; }
+html { font-family: ui-sans-serif, system-ui, sans-serif; }
 #mindmap { display: block; width: 100vw; height: 100vh; }
+.markmap-dark { background: #27272a; color: white; }
 </style>
-<link rel="stylesheet" href="lib/markmap-toolbar.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/markmap-toolbar@0.18.12/dist/style.css">
 </head>
 <body>
 <svg id="mindmap"></svg>
-<script src="lib/d3.min.js"></script>
-<script src="lib/markmap-view.js"></script>
-<script src="lib/markmap-toolbar.js"></script>
-<script>
-const markdown = `# AI Agent 第2章 · 上下文工程
-
-## 核心命题
-- 上下文决定 Agent 能力的上限
-- 中等模型+好上下文 > 顶级模型+缺信息
-- 团队文档化是 AI 原生的前提
-
-## API 上下文结构
-- 消息列表（messages）是核心
-- 四种消息角色
-  - system: 系统提示词（最高优先级）
-  - user: 用户输入
-  - assistant: 模型回复（文本/tool_calls）
-  - tool: 工具执行结果
-- 单轮对话: system + user → assistant
-- 多轮工具调用: 带 tools 字段，ReAct 循环
-- Agent 框架核心 = 管理 messages 列表
-
-## KV Cache
-- 原理: 缓存已计算 token 的 K、V 向量
-- 新增 token 只算自身，复用缓存
-- 三条核心准则
-  - 系统提示词和工具定义定稿后别改
-  - 动态信息追加到末尾
-  - 使用标准 API 格式
-- 四种错误模式
-  - 动态系统提示词（时间戳写进 system）
-  - 动态用户配置
-  - 工具定义动态排序
-  - 滑动窗口对话历史
-- 最致命: 文本格式化（USER:/ASSISTANT:）
-- KV Cache vs Prompt Cache
-  - KV Cache: 推理内部，单次请求
-  - Prompt Cache: API层，跨请求
-  - 都依赖前缀不变性
-
-## Chat Template
-- API JSON → 模型 token 流
-- 特殊标记: <|im_start|>, <|im_end|>
-- 不同模型家族格式不同
-- 解释了为什么必须用标准 API 格式
-
-## 注意力机制
-- Query（查询）: 当前词发出的搜索请求
-- Key（键）: 每个词的标签
-- Value（值）: 每个词的内容
-- Q·K → 权重 → 加权 V
-- 注意力储存池（Attention Sink）
-  - 第一个 token 吸收 70%+ 权重
-  - softmax 强制权重和=100%
-- 位置偏好: 开头结尾权重高，中间被忽视
-- Lost in the Middle
-
-## 提示工程
-- 语气与风格: 人格设计
-- 结构化提示: XML + Markdown
-- 流程驱动 vs 规则堆砌
-- 业务规则细化: 产品经理深度参与
-- Few-shot 示例: 难以用规则描述时给例子
-- 工具定义设计: 边界、示例、性能提示
-
-## 提示注入
-- 本质: 外部内容伪装成系统指令
-- 三类攻击
-  - 直接注入: 用户消息嵌入指令
-  - 间接注入: 网页/文档隐藏指令
-  - 记忆注入: 持久化污染后续会话
-- 防御: 来源标记、结构化角色、输入清洗
-
-## Agent Skills
-- 渐进式披露（Progressive Disclosure）
-- 三层结构
-  - 元数据: name + description（路由条件+反例）
-  - 核心流程: SKILL.md 正文
-  - 细则: 子文档和脚本
-- 元数据目录在 system prompt
-- 完整指令按需加载到对话末尾
-- 兼容 KV Cache
-
-## Agent 状态栏
-- 理论基础: 上下文学习是检索而非推理
-- 状态栏五类信息
-  - 任务规划（TODO列表）
-  - 侧信道信息（时间、位置）
-  - 环境观察摘要
-  - 工具调用计数
-  - 系统状态
-- 关键原则
-  - 用代码维护，别用 LLM
-  - 别删除原始上下文
-  - 把准确率当生产指标
-- 两种更新实现: 持久追加 vs 每轮替换
-
-## 上下文压缩
-- 两个动机
-  - 长度和成本约束
-  - 提升思考质量（更深层）
-- 上下文腐化: 装得下但找不到
-- 六种策略
-  - 无压缩 → 溢出
-  - 个体摘要 → 碎片化
-  - 组合摘要 → 截断风险
-  - 上下文感知压缩 → 最优
-  - 带引用感知 → 可溯源
-  - 自适应窗口 → 最大化保留
-- 生产分层压缩（5层）
-- 隔离优于压缩: 子Agent上下文隔离
-- 压缩设计四原则
-  - 信息价值非均匀分布
-  - 语义完整性
-  - 任务相关性
-  - 压缩即理解`;
-
-(async () => {
-  const { markmap } = window;
-  const { Markmap } = markmap;
-  const transformer = new markmap.Transformer();
-  const { root } = transformer.transform(markdown);
-  const mm = Markmap.create("svg#mindmap", undefined, root);
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script><script src="https://cdn.jsdelivr.net/npm/markmap-view@0.18.12/dist/browser/index.js"></script><script src="https://cdn.jsdelivr.net/npm/markmap-toolbar@0.18.12/dist/index.js"></script><script>((r) => {
+          setTimeout(r);
+        })(() => {
+  const { markmap, mm } = window;
   const toolbar = new markmap.Toolbar();
   toolbar.attach(mm);
   const el = toolbar.render();
   el.setAttribute("style", "position:absolute;bottom:20px;right:20px");
   document.body.append(el);
-})();
-</script>
+})</script><script>((getMarkmap, getOptions, root2, jsonOptions) => {
+              const markmap = getMarkmap();
+              window.mm = markmap.Markmap.create(
+                "svg#mindmap",
+                (getOptions || markmap.deriveOptions)(jsonOptions),
+                root2
+              );
+              if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+                document.documentElement.classList.add("markmap-dark");
+              }
+            })(() => window.markmap,null,{"content":"AI Agent 第2章 · 上下文工程","children":[{"content":"核心命题","children":[{"content":"上下文决定 Agent 能力的上限","children":[]},{"content":"中等模型+好上下文 > 顶级模型+缺信息","children":[]},{"content":"团队文档化是 AI 原生的前提","children":[]}]},{"content":"API 上下文结构","children":[{"content":"消息列表（messages）是核心","children":[]},{"content":"四种消息角色","children":[{"content":"system: 系统提示词（最高优先级）","children":[]},{"content":"user: 用户输入","children":[]},{"content":"assistant: 模型回复（文本/tool_calls）","children":[]},{"content":"tool: 工具执行结果","children":[]}]},{"content":"单轮对话: system + user → assistant","children":[]},{"content":"多轮工具调用: 带 tools 字段，ReAct 循环","children":[]},{"content":"Agent 框架核心 = 管理 messages 列表","children":[]}]},{"content":"KV Cache","children":[{"content":"原理: 缓存已计算 token 的 K、V 向量","children":[]},{"content":"新增 token 只算自身，复用缓存","children":[]},{"content":"三条核心准则","children":[{"content":"系统提示词和工具定义定稿后别改","children":[]},{"content":"动态信息追加到末尾","children":[]},{"content":"使用标准 API 格式","children":[]}]},{"content":"四种错误模式","children":[{"content":"动态系统提示词（时间戳写进 system）","children":[]},{"content":"动态用户配置","children":[]},{"content":"工具定义动态排序","children":[]},{"content":"滑动窗口对话历史","children":[]}]},{"content":"最致命: 文本格式化（USER:/ASSISTANT:）","children":[]},{"content":"KV Cache vs Prompt Cache","children":[{"content":"KV Cache: 推理内部，单次请求","children":[]},{"content":"Prompt Cache: API层，跨请求","children":[]},{"content":"都依赖前缀不变性","children":[]}]}]},{"content":"Chat Template","children":[{"content":"API JSON → 模型 token 流","children":[]},{"content":"特殊标记: <|im_start|>, <|im_end|>","children":[]},{"content":"不同模型家族格式不同","children":[]},{"content":"解释了为什么必须用标准 API 格式","children":[]}]},{"content":"注意力机制","children":[{"content":"Query（查询）: 当前词发出的搜索请求","children":[]},{"content":"Key（键）: 每个词的标签","children":[]},{"content":"Value（值）: 每个词的内容","children":[]},{"content":"Q·K → 权重 → 加权 V","children":[]},{"content":"注意力储存池（Attention Sink）","children":[{"content":"第一个 token 吸收 70%+ 权重","children":[]},{"content":"softmax 强制权重和=100%","children":[]}]},{"content":"位置偏好: 开头结尾权重高，中间被忽视","children":[]},{"content":"Lost in the Middle","children":[]}]},{"content":"提示工程","children":[{"content":"语气与风格: 人格设计","children":[]},{"content":"结构化提示: XML + Markdown","children":[]},{"content":"流程驱动 vs 规则堆砌","children":[]},{"content":"业务规则细化: 产品经理深度参与","children":[]},{"content":"Few-shot 示例: 难以用规则描述时给例子","children":[]},{"content":"工具定义设计: 边界、示例、性能提示","children":[]}]},{"content":"提示注入","children":[{"content":"本质: 外部内容伪装成系统指令","children":[]},{"content":"三类攻击","children":[{"content":"直接注入: 用户消息嵌入指令","children":[]},{"content":"间接注入: 网页/文档隐藏指令","children":[]},{"content":"记忆注入: 持久化污染后续会话","children":[]}]},{"content":"防御: 来源标记、结构化角色、输入清洗","children":[]}]},{"content":"Agent Skills","children":[{"content":"渐进式披露（Progressive Disclosure）","children":[]},{"content":"三层结构","children":[{"content":"元数据: name + description（路由条件+反例）","children":[]},{"content":"核心流程: SKILL.md 正文","children":[]},{"content":"细则: 子文档和脚本","children":[]}]},{"content":"元数据目录在 system prompt","children":[]},{"content":"完整指令按需加载到对话末尾","children":[]},{"content":"兼容 KV Cache","children":[]}]},{"content":"Agent 状态栏","children":[{"content":"理论基础: 上下文学习是检索而非推理","children":[]},{"content":"状态栏五类信息","children":[{"content":"任务规划（TODO列表）","children":[]},{"content":"侧信道信息（时间、位置）","children":[]},{"content":"环境观察摘要","children":[]},{"content":"工具调用计数","children":[]},{"content":"系统状态","children":[]}]},{"content":"关键原则","children":[{"content":"用代码维护，别用 LLM","children":[]},{"content":"别删除原始上下文","children":[]},{"content":"把准确率当生产指标","children":[]}]},{"content":"两种更新实现: 持久追加 vs 每轮替换","children":[]}]},{"content":"上下文压缩","children":[{"content":"两个动机","children":[{"content":"长度和成本约束","children":[]},{"content":"提升思考质量（更深层）","children":[]}]},{"content":"上下文腐化: 装得下但找不到","children":[]},{"content":"六种策略","children":[{"content":"无压缩 → 溢出","children":[]},{"content":"个体摘要 → 碎片化","children":[]},{"content":"组合摘要 → 截断风险","children":[]},{"content":"上下文感知压缩 → 最优","children":[]},{"content":"带引用感知 → 可溯源","children":[]},{"content":"自适应窗口 → 最大化保留","children":[]}]},{"content":"生产分层压缩（5层）","children":[]},{"content":"隔离优于压缩: 子Agent上下文隔离","children":[]},{"content":"压缩设计四原则","children":[{"content":"信息价值非均匀分布","children":[]},{"content":"语义完整性","children":[]},{"content":"任务相关性","children":[]},{"content":"压缩即理解","children":[]}]}]}]},null)</script>
 </body>
 </html>
