@@ -28,6 +28,37 @@ def _seed_system(eng):
     s.close()
 
 
+class FakeEmbedder:
+    """确定性假 embedding（哈希到固定维度），避免测试下载真实模型。"""
+
+    def embed_documents(self, texts):
+        return [self._embed(t) for t in texts]
+
+    def embed_query(self, text):
+        return self._embed(text)
+
+    def _embed(self, text):
+        import hashlib
+
+        dim = 32
+        vec = [0.0] * dim
+        for ch in text:
+            h = hashlib.md5(ch.encode()).digest()
+            vec[int.from_bytes(h[:1], "big") % dim] += 1.0
+        norm = (sum(v * v for v in vec) ** 0.5) or 1.0
+        return [v / norm for v in vec]
+
+
+@pytest.fixture(autouse=True)
+def _isolate_rag(monkeypatch, tmp_path):
+    """全局隔离 RAG：假 embedding + 临时 Chroma 目录（上传自动索引不再下载模型）。"""
+    from config import settings
+    from rag import embedding
+
+    monkeypatch.setattr(settings, "chroma_path", str(tmp_path / "chroma"))
+    monkeypatch.setattr(embedding, "get_embedder", lambda: FakeEmbedder())
+
+
 @pytest.fixture()
 def engine(tmp_path):
     db_file = tmp_path / "test.db"

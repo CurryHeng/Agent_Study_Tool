@@ -117,3 +117,20 @@ def test_rag_api_endpoints(client, auth_headers, monkeypatch, tmp_path):
     items = resp2.json()
     assert len(items) >= 1
     assert all(i["metadata"]["workbook_id"] == wb["id"] for i in items)
+
+
+def test_upload_auto_indexes_rag(client, auth_headers):
+    """上传文档后应自动构建向量索引：无需手动 /index 即可检索（修复缺口）。"""
+    wb = client.post("/api/workbooks", json={"name": "A"}, headers=auth_headers).json()
+    resp = _upload(client, auth_headers, wb["id"], "a.md", MD_A)
+    assert resp.status_code == 201
+
+    resp2 = client.post(
+        "/api/rag/retrieve",
+        json={"workbook_id": wb["id"], "query": "函数", "top_k": 5},
+        headers=auth_headers,
+    )
+    assert resp2.status_code == 200
+    items = resp2.json()
+    assert len(items) >= 1, "上传后未自动建向量索引，RAG 检索为空"
+    assert all(i["metadata"]["workbook_id"] == wb["id"] for i in items)

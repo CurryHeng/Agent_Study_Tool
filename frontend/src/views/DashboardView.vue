@@ -101,7 +101,7 @@ onMounted(load)
         <Brain :size="120" />
       </div>
 
-      <p class="text-sm font-medium text-emerald-100">StudyForge · 你的 AI 学习伙伴</p>
+      <p class="text-sm font-medium text-emerald-100">EStudy · 你的 AI 学习伙伴</p>
       <h1 class="mt-2 text-3xl font-bold tracking-tight">
         {{ stats.due > 0 ? `今天有 ${stats.due} 道题待复习` : '全部搞定！' }}
       </h1>

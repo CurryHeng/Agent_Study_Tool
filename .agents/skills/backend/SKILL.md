@@ -1,6 +1,6 @@
 ---
 name: backend
-description: StudyForge 后端（FastAPI）开发规范。当编写或修改 backend/ 下的 FastAPI 路由、Service、Repository、config、认证中间件时加载。
+description: EStudy 后端（FastAPI）开发规范。当编写或修改 backend/ 下的 FastAPI 路由、Service、Repository、config、认证中间件时加载。
 ---
 
 # backend — FastAPI 后端开发规范

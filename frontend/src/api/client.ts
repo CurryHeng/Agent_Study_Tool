@@ -34,12 +34,16 @@ export function setAuth(access: string, refresh: string, user: { id: number; use
   localStorage.setItem(USER_KEY, JSON.stringify(user))
 }
 
+export const AUTH_INVALID_EVENT = 'estudy:auth-invalid'
+
 export function clearAuth() {
   accessToken = null
   refreshToken = null
   localStorage.removeItem(ACCESS_KEY)
   localStorage.removeItem(REFRESH_KEY)
   localStorage.removeItem(USER_KEY)
+  // 通知 auth store 同步（修复：令牌过期/刷新失败时 loggedIn 不更新的问题）
+  window.dispatchEvent(new CustomEvent(AUTH_INVALID_EVENT))
 }
 
 async function doRefresh(): Promise<boolean> {

@@ -1,6 +1,6 @@
 ---
 name: document-parser
-description: StudyForge 文档解析（PDF/MD/Word/PPT/图片）开发规范。当编写/修改 parser、Document Representation、文件上传解析逻辑时加载。
+description: EStudy 文档解析（PDF/MD/Word/PPT/图片）开发规范。当编写/修改 parser、Document Representation、文件上传解析逻辑时加载。
 ---
 
 # document-parser — 文档解析开发规范

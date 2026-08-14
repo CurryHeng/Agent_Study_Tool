@@ -34,7 +34,7 @@ async function submit() {
         >
           <GraduationCap :size="26" />
         </div>
-        <h1 class="text-2xl font-bold tracking-tight text-slate-800 dark:text-white">StudyForge</h1>
+        <h1 class="text-2xl font-bold tracking-tight text-slate-800 dark:text-white">EStudy</h1>
         <p class="mt-1 text-sm text-slate-400">欢迎回来，继续你的学习之旅</p>
       </div>
 

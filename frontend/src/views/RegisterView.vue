@@ -36,7 +36,7 @@ async function submit() {
           <GraduationCap :size="26" />
         </div>
         <h1 class="text-2xl font-bold tracking-tight text-slate-800 dark:text-white">创建账号</h1>
-        <p class="mt-1 text-sm text-slate-400">开启你的 StudyForge 学习空间</p>
+        <p class="mt-1 text-sm text-slate-400">开启你的 EStudy 学习空间</p>
       </div>
 
       <form class="card space-y-4 p-6" @submit.prevent="submit">

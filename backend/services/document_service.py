@@ -132,6 +132,14 @@ def upload_document(
     doc.status = DocumentStatus.success
     db.flush()
 
+    # 上传后自动构建向量索引（RAG 检索依赖）；失败不阻断上传，可稍后手动重建。
+    try:
+        from services import rag_service
+
+        rag_service.index_document(db, user, doc.id)
+    except Exception:
+        pass
+
     sections = [
         SectionOut(title=s.title, level=s.level, paragraphs=s.paragraphs)
         for s in parsed.sections

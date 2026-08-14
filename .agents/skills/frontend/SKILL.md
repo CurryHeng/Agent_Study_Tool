@@ -1,6 +1,6 @@
 ---
 name: frontend
-description: StudyForge 前端（Vue 3）开发规范。当编写或修改 frontend/ 下的 Vue 组件、页面、Pinia store、路由、API 请求层时加载。
+description: EStudy 前端（Vue 3）开发规范。当编写或修改 frontend/ 下的 Vue 组件、页面、Pinia store、路由、API 请求层时加载。
 ---
 
 # frontend — Vue 3 前端开发规范

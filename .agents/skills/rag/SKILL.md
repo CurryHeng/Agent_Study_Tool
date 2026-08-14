@@ -1,6 +1,6 @@
 ---
 name: rag
-description: StudyForge 的 RAG（Chroma）开发规范。当编写/修改 chunker、embedding、retriever、Chroma 接入时加载。
+description: EStudy 的 RAG（Chroma）开发规范。当编写/修改 chunker、embedding、retriever、Chroma 接入时加载。
 ---
 
 # rag — RAG（Chroma）开发规范

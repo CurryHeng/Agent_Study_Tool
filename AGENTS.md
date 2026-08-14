@@ -1,11 +1,12 @@
-# AGENTS.md — StudyForge 项目开发指南
+# AGENTS.md — EStudy 项目开发指南
 
 > 本文件是 AI 编程工具（OpenCode + DeepSeek V4 Pro）在开发本项目时必须遵循的规范。
 > 技术方案以 `docs/` 下的需求分析、总体设计、详细设计文档为准，本文件是对其开发约束的浓缩与固化。
+> 当前迭代：P1 冲刺，四人分工见 `docs/开发任务分工.md`。
 
 ## 1. 项目目标
 
-**StudyForge（详细设计文档中亦称 EStudy）——智能题库与学习系统。**
+**EStudy（原名 StudyForge，2026-08-14 正式更名）——智能题库与学习系统。**
 
 面向大学生期末复习场景，通过 AI Agent 将用户已有的课程资料（提纲、课件、教材等）自动转化为结构化学习资源：
 
@@ -30,16 +31,16 @@ P0 核心链路：
 | 向量数据库 | **Chroma**（RAG 语义检索）|
 | 文本模型 | **DeepSeek-V4**（文本理解 / 知识提取 / 出题 / 审核 / Navigator）|
 | 视觉模型 | **千问视觉模型**（图片理解 / OCR / 复杂视觉内容解析）|
-| 认证 | JWT（登录注册，参考现有 React/Express 代码的实现思路）|
+| 认证 | JWT（登录注册，access+refresh 双令牌轮换，已在 FastAPI 实现）|
 
-> 注意：现有 React/Express 代码**仅作参考**，可评估复用其中业务逻辑（如 SM-2、错题归纳、题库结构），但**不得为了兼容旧代码而改变 docs 确定的 Vue + FastAPI + LangGraph 架构**。
+> 注意：旧 React/Express 代码已删除（2026-08-14），业务逻辑（SM-2、错题归纳、题库结构）均已移植到 FastAPI 后端。架构以 Vue + FastAPI + LangGraph 为准，不得回退。
 
 ## 3. 目录结构
 
 依据详细设计 Pt.2 §9，采用前后端分离结构，P0 已全部实现：
 
 ```text
-StudyForge/
+EStudy/
 ├── frontend/                    # Vue 3 前端（P0-9 完成）
 │   ├── package.json / vite.config.ts / tsconfig.json / index.html
 │   └── src/
@@ -134,7 +135,7 @@ LangGraph 主流程：`START → Navigator → Orchestrator → Task Router → 
 
 ### 6.5 题目结构（Question Agent 输出）
 
-P0 题型：`single_choice` / `multiple_choice` / `true_false` / `fill_blank`。统一字段：`type, content, options[], answer, analysis, knowledge_id, difficulty`。
+P0 已实现**五种题型**：`single_choice` / `multiple_choice` / `true_false` / `fill_blank` / `short_answer`（`models/enums.py` 为唯一真相源）。统一字段：`type, content, options[], answer, analysis, knowledge_id, difficulty`。简答题已支持 LLM 判分（LLM 不可用时降级用户自评）。
 
 ### 6.6 LLM 调用规范
 
@@ -169,20 +170,28 @@ Agent 默认 `read + create`；`update` / `delete` / 批量操作需额外授权
 
 ## 8. API 开发规范
 
-REST 风格，路由前缀 `/api`。主要端点（详细设计 Pt.2 §6）：
+REST 风格，路由前缀 `/api`。**实际路由以下为准（与 openapi.json 核对，2026-08-14）**：
 
 ```text
 POST /api/auth/register          POST /api/auth/login
-GET/POST /api/courses            GET/DELETE /api/courses/{id}
-POST /api/documents/upload       GET/DELETE /api/documents/{id}
-GET /api/courses/{id}/knowledge  GET /api/knowledge/{id}
-GET/PUT /api/courses/{id}/mindmap
-GET /api/questions               POST /api/questions/generate
+POST /api/auth/refresh           POST /api/auth/logout
+GET  /api/auth/me
+GET/POST /api/workbooks          GET/PUT/DELETE /api/workbooks/{id}
+GET  /api/workbooks/{id}/mindmap
+GET/POST /api/questions          POST /api/questions/generate
 GET/PUT/DELETE /api/questions/{id}
-POST /api/exams/start            POST /api/questions/{id}/answer
-GET /api/exams/{id}/result
+POST /api/questions/{id}/similar  POST /api/questions/{id}/answer
+GET  /api/knowledge              GET /api/knowledge/{id}
+POST /api/documents/upload       GET /api/documents
+GET/DELETE /api/documents/{id}   POST /api/documents/{id}/index
+POST /api/rag/retrieve
+GET  /api/review/due             POST /api/review/{id}/favorite
 POST /api/agent/chat             # AI 助手统一入口
+GET/PUT /api/wrong-records...    GET /api/stats
+GET  /api/health
 ```
+
+> 注意：早期文档中的 `/api/courses`、`/api/exams/*` 已废弃；练习册概念为 **workbook**，答题入口为 `POST /api/questions/{id}/answer`。上传文档后会**自动构建向量索引**（2026-08-14 修复，此前需手动 `/index`）。
 
 ## 9. 开发与运行命令
 
@@ -202,7 +211,7 @@ JWT_SECRET=  ENCRYPTION_KEY=
 # 后端（FastAPI）
 cd backend
 pip install -r requirements.txt          # 安装依赖（首次）
-uvicorn main:app --reload                # 启动开发服务（端口 8000，可配置）
+uvicorn main:app --reload                # 启动开发服务（端口 8080，与 vite 代理/启动.bat 一致）
 
 # 数据库迁移（Alembic）
 cd backend
@@ -221,16 +230,16 @@ python -m ruff check .                    # 静态检查
 # 前端（Vue 3 + Vite）
 cd frontend
 npm install                              # 安装依赖（首次）
-npm run dev                              # 启动开发服务（端口 5173）
+npm run dev                              # 启动开发服务（端口 5175）
 npm run typecheck                        # vue-tsc 类型检查
 npm run build                            # 类型检查 + 生产构建
 npm test                                 # vitest 单元测试
 
 # 前后端联调
-# 1) 启动后端：cd backend && uvicorn main:app --port 8000
+# 1) 启动后端：cd backend && uvicorn main:app --port 8080
 # 2) 启动前端：cd frontend && npm run dev
-# 3) 前端 dev server 已配 Vite 代理，/api 自动转发到 http://localhost:8000
-#    浏览器访问 http://localhost:5173（前端调用 /api/...，无需处理 CORS）
+# 3) 前端 dev server 已配 Vite 代理，/api 自动转发到 http://localhost:8080
+#    浏览器访问 http://localhost:5175（前端调用 /api/...，无需处理 CORS）
 ```
 
 > 说明：环境使用 `EStudy` conda 环境（Python 3.11），命令中用其 Python；依赖管理用 `requirements.txt`（运行时）+ pytest/ruff（开发）。不引入 uv/poetry/Redis/消息队列等额外组件。
@@ -271,7 +280,9 @@ cd frontend && npm test
 - **日志**：Agent 任务记录 `task_id / user_id / agent_name / node_name / start_time / end_time / status / error`（正式环境注意脱敏与 Token 成本）。
 - **安全**：密码只存 Hash；上传文件校验扩展名/MIME/大小；JWT_SECRET、ENCRYPTION_KEY、API Key 一律走 `.env`，禁止硬编码或提交。
 
-## 13. 项目进度与当前状态（P0 已完成）
+## 13. 项目进度与当前状态（P0 已完成，P1 冲刺进行中）
+
+> 2026-08-14：项目正式更名 **EStudy**（原 StudyForge）；P0 缺口修补完成（上传自动索引/auth 同步/文档对齐）；四人五天 P1 分工见 `docs/开发任务分工.md`。
 
 ### 13.1 阶段完成情况
 
@@ -290,9 +301,9 @@ cd frontend && npm test
 
 ### 13.2 测试结果（当前基线）
 
-- **后端**：`168` 个测试全部通过（含核心闭环集成测试 `test_integration.py`），`ruff check` 全绿。
+- **后端**：`169` 个测试全部通过（含核心闭环集成测试 `test_integration.py` 与上传自动索引测试），`ruff check` 全绿。
 - **前端**：`10` 个单元测试通过，`vue-tsc` 类型检查与 `vite build` 均成功。
-- **联调**：后端 `/api/health` 正常、前端页面 200、Vite 代理 `/api` → 后端 8000 转发成功。
+- **联调**：后端 `/api/health` 正常、前端页面 200、Vite 代理 `/api` → 后端 8080 转发成功。
 
 ### 13.3 已知遗留问题（P1 及以后评估）
 
@@ -306,6 +317,6 @@ cd frontend && npm test
 6. **刷题 session 恢复未做**（localStorage）；**无 Playwright E2E**（冒烟脚本代替）。
 7. **无 LangGraph checkpoint 持久化**（内存态）；事务边界依赖 route commit。
 8. **真实 DeepSeek 调用未在测试中触发**（用 Mock LLM）；`llm_model` 默认 `deepseek-chat` 需与实际账号确认。
-9. 审计 P3 小项：列表无分页、软删题的错题仍显示、错题筛选未下沉后端、auth store `loggedIn` 不同步、seed 题型单一（详见 `docs/问题小结.md` #11~#17）。
+9. ~~审计 P3 小项之 auth store `loggedIn` 不同步、seed 题型单一~~：✅ 已修复（`client.ts` 广播 auth-invalid 事件 + store 监听；内置题库已替换）。剩余小项：列表无分页、软删题的错题仍显示、错题筛选未下沉后端（详见 `docs/问题小结.md` #11~#14）。
 
 > P1 规划功能（AI 错因分析/薄弱知识点强化/AI 导师/知识图谱/掌握度/热力图）均未开始，仅 `/api/stats` 有雏形。

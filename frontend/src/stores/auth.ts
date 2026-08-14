@@ -1,11 +1,17 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { clearAuth, getStoredUser, isAuthenticated } from '../api/client'
+import { AUTH_INVALID_EVENT, clearAuth, getStoredUser, isAuthenticated } from '../api/client'
 import { authApi } from '../api'
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref(getStoredUser())
   const loggedIn = ref(isAuthenticated())
+
+  // client 层清除令牌（401 刷新失败等）时同步 store，避免 loggedIn 过期不同步
+  window.addEventListener(AUTH_INVALID_EVENT, () => {
+    user.value = null
+    loggedIn.value = false
+  })
 
   async function login(email: string, password: string) {
     const data = await authApi.login(email, password)

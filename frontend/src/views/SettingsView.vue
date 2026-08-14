@@ -205,7 +205,7 @@ onMounted(() => {
         <Info :size="16" class="text-emerald-500" />
         关于
       </h3>
-      <p class="text-sm font-medium text-slate-700 dark:text-slate-200">StudyForge 智能题库与学习系统</p>
+      <p class="text-sm font-medium text-slate-700 dark:text-slate-200">EStudy 智能题库与学习系统</p>
       <p class="text-xs text-slate-400">版本 0.1.0（P0 完善阶段）</p>
       <p class="mt-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
         面向大学生期末复习：上传资料 → 生成知识结构/思维导图/题库 → 刷题与错题记录形成学习闭环。

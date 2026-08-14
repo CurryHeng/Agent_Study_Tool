@@ -1,6 +1,6 @@
 ---
 name: langgraph
-description: StudyForge 的 LangGraph Agent 工作流开发规范。当编写/修改 Agent、LangGraph 图节点、TaskState、Orchestrator、Navigator 时加载。
+description: EStudy 的 LangGraph Agent 工作流开发规范。当编写/修改 Agent、LangGraph 图节点、TaskState、Orchestrator、Navigator 时加载。
 ---
 
 # langgraph — LangGraph Agent 工作流开发规范

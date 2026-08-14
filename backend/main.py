@@ -17,11 +17,11 @@ from api.workbooks import router as workbooks_router
 from api.wrong_records import router as wrong_records_router
 from services.access import AccessError
 
-app = FastAPI(title="StudyForge", version="0.1.0")
+app = FastAPI(title="EStudy", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=["http://localhost:5175", "http://127.0.0.1:5175"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -99,13 +99,13 @@ def test_chat_intent_direct_answer(client, auth_headers, registered_user, sessio
     nav = MockLLM(
         [
             {"intent": "chat", "params": {}},  # navigator
-            {"reply": "你好，我是 StudyForge 助手"},  # direct_answer（LLM 回答）
+            {"reply": "你好，我是 EStudy 助手"},  # direct_answer（LLM 回答）
         ]
     )
 
     result = agent_service.run_task(session, user, "你好", navigator_llm=nav)
     assert result["intent"] == "chat"
-    assert result["result"]["reply"] == "你好，我是 StudyForge 助手"
+    assert result["result"]["reply"] == "你好，我是 EStudy 助手"
 
 
 def test_unknown_intent_falls_back_to_chat(client, auth_headers, registered_user, session):

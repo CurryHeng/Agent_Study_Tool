@@ -30,7 +30,7 @@ INTENT_PLAN: dict[str, list[str]] = {
     "chat": ["direct_answer"],
 }
 
-NAVIGATOR_SYSTEM = """你是 StudyForge 的任务导航器，理解用户意图并确定任务类型。
+NAVIGATOR_SYSTEM = """你是 EStudy 的任务导航器，理解用户意图并确定任务类型。
 只输出 JSON，格式：
 {
   "intent": "generate_questions | generate_mindmap | list_documents | chat",
@@ -44,9 +44,9 @@ NAVIGATOR_SYSTEM = """你是 StudyForge 的任务导航器，理解用户意图�
 }
 params 按任务类型填对应字段，未提及的字段省略。"""
 
-DIRECT_REPLY = "我是 StudyForge 助手，可以帮你生成题目、生成思维导图、整理资料。"
+DIRECT_REPLY = "我是 EStudy 助手，可以帮你生成题目、生成思维导图、整理资料。"
 
-CHAT_SYSTEM = """你是 StudyForge 学习助手，友好、简洁地解答用户关于学习、刷题、复习、AI 出题的问题。
+CHAT_SYSTEM = """你是 EStudy 学习助手，友好、简洁地解答用户关于学习、刷题、复习、AI 出题的问题。
 只输出 JSON，格式：{"reply": "你的回答"}"""
 
 

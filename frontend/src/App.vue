@@ -54,7 +54,7 @@ async function logout() {
           >
             <GraduationCap :size="18" />
           </span>
-          <span class="text-base tracking-tight">StudyForge</span>
+          <span class="text-base tracking-tight">EStudy</span>
         </RouterLink>
 
         <nav class="flex items-center gap-0.5 overflow-x-auto">

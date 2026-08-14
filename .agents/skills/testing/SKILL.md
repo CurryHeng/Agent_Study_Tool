@@ -1,6 +1,6 @@
 ---
 name: testing
-description: StudyForge 测试规范（pytest + 前端 vitest）。当编写/运行单元测试、Agent 结构测试、核心流程测试时加载。
+description: EStudy 测试规范（pytest + 前端 vitest）。当编写/运行单元测试、Agent 结构测试、核心流程测试时加载。
 ---
 
 # testing — 测试规范

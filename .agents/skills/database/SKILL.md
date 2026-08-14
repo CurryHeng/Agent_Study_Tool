@@ -1,6 +1,6 @@
 ---
 name: database
-description: StudyForge 数据库（SQLite + SQLAlchemy 2.0）开发规范。当定义/修改数据表、编写 Repository、设计实体关系、处理数据迁移时加载。
+description: EStudy 数据库（SQLite + SQLAlchemy 2.0）开发规范。当定义/修改数据表、编写 Repository、设计实体关系、处理数据迁移时加载。
 ---
 
 # database — SQLite + SQLAlchemy 2.0 开发规范
