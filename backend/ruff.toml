@@ -1,0 +1,14 @@
+target-version = "py311"
+line-length = 100
+
+extend-exclude = ["alembic/versions"]
+
+[lint]
+select = ["E", "F", "I", "UP", "B", "RUF", "DTZ"]
+ignore = [
+    "B008",   # FastAPI Depends() 在默认参数中调用是官方约定
+    "DTZ011", # SM-2 刻意使用本地日期 date.today()
+    "RUF001", # 中文注释/文档串中的全角标点，属正常中文书写
+    "RUF002",
+    "RUF003",
+]

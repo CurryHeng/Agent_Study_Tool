@@ -25,7 +25,18 @@ dist-ssr
 Thumbs.db
 Desktop.ini
 
-# Server
-server/data/*.db
-server/data/*.db-journal
-server/data/
+# Backend runtime data（数据库 / 上传文件 / 向量库，不入库）
+backend/data/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# TypeScript 构建缓存
+*.tsbuildinfo
+
+# Obsidian 个人配置
+.obsidian/
+docs/.obsidian/

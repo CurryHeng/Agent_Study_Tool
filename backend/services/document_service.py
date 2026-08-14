@@ -1,0 +1,160 @@
+"""文档上传 / 解析 / 知识提取业务逻辑。"""
+import json
+from dataclasses import asdict
+from pathlib import Path
+
+from sqlalchemy.orm import Session
+
+from config import settings
+from models import Document, User
+from models.enums import DocumentStatus
+from parsers.factory import detect_type, parse_file
+from repositories import document_repository
+from schemas.document import DocumentDetailOut, DocumentOut, SectionOut
+from services import access, knowledge_service
+
+
+def _upload_dir() -> Path:
+    return Path(settings.upload_dir)
+
+
+def _parsed_path(doc_id: int) -> Path:
+    return _upload_dir() / "parsed" / f"{doc_id}.json"
+
+
+def _validated_cache_path(doc_id: int) -> Path:
+    """导入 Agent 抽样验证缓存（uploads/parsed/{doc_id}.validated.json）。"""
+    return _upload_dir() / "parsed" / f"{doc_id}.validated.json"
+
+
+def _run_import_agents(doc_id: int, parsed) -> dict | None:
+    """运行导入 Agent（Document/Knowledge）：LLM 章节理解 + 知识点提取。
+
+    仅在配置了 DEEPSEEK_API_KEY 时启用；失败不阻断上传（解析与章节树已成功，
+    按无 LLM 的确定性结果继续）。返回知识 dict 或 None。
+    """
+    if not settings.deepseek_api_key:
+        return None
+    try:
+        from workflow.import_graph import run_import_graph
+
+        plain_text = "\n\n".join(p for s in parsed.sections for p in s.paragraphs)
+        result = run_import_graph(
+            title=parsed.title,
+            plain_text=plain_text,
+            sections=parsed.sections,
+            cache_path=_validated_cache_path(doc_id),
+        )
+        parsed.sections = result["sections"] or parsed.sections
+        return result["knowledge"]
+    except Exception:
+        return None
+
+
+def _save_parsed(doc_id: int, parsed) -> None:
+    path = _parsed_path(doc_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(asdict(parsed), ensure_ascii=False), encoding="utf-8")
+
+
+def _load_sections(doc_id: int) -> list[SectionOut]:
+    path = _parsed_path(doc_id)
+    if not path.exists():
+        return []
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return [SectionOut(**s) for s in data.get("sections", [])]
+
+
+def read_parsed_sections(doc_id: int) -> list:
+    """读取已解析的章节（供 RAG 切块使用），返回 parsers.base.Section 列表。"""
+    from parsers.base import Section
+
+    path = _parsed_path(doc_id)
+    if not path.exists():
+        return []
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return [
+        Section(title=s["title"], level=s["level"], paragraphs=s.get("paragraphs", []))
+        for s in data.get("sections", [])
+    ]
+
+
+def _to_detail(doc: Document, sections: list[SectionOut]) -> DocumentDetailOut:
+    return DocumentDetailOut(
+        id=doc.id,
+        workbook_id=doc.workbook_id,
+        filename=doc.filename,
+        file_type=doc.file_type,
+        file_path=doc.file_path,
+        file_size=doc.file_size,
+        status=doc.status,
+        created_at=doc.created_at,
+        sections=sections,
+    )
+
+
+def upload_document(
+    db: Session, user: User, workbook_id: int, filename: str, content: bytes
+) -> DocumentDetailOut:
+    access.get_owned_workbook(db, user, workbook_id)
+
+    file_type = detect_type(filename)
+    if file_type is None:
+        raise access.AccessError(422, "不支持的文件格式（支持 PDF/Markdown/Word/PPT）")
+    if file_type == "image":
+        raise access.AccessError(501, "图片解析（视觉 Agent）暂未实现")
+    if len(content) > settings.max_file_size:
+        raise access.AccessError(413, "文件过大")
+
+    doc = document_repository.create(db, workbook_id, filename, file_type, "")
+    db.flush()
+
+    UPLOAD_DIR = _upload_dir()
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    ext = Path(filename).suffix.lower()
+    file_path = UPLOAD_DIR / f"{doc.id}{ext}"
+    file_path.write_bytes(content)
+    doc.file_path = str(file_path)
+
+    try:
+        parsed = parse_file(str(file_path), file_type)
+        parsed.title = Path(filename).stem
+    except Exception as exc:
+        doc.status = DocumentStatus.failed
+        db.flush()
+        raise access.AccessError(422, f"文档解析失败：{exc}") from exc
+
+    knowledge = _run_import_agents(doc.id, parsed)
+    _save_parsed(doc.id, parsed)
+    root = knowledge_service.import_sections(db, workbook_id, doc.id, parsed.title, parsed.sections)
+    if knowledge:
+        knowledge_service.import_knowledge_points(db, workbook_id, doc.id, root, knowledge)
+    doc.status = DocumentStatus.success
+    db.flush()
+
+    sections = [
+        SectionOut(title=s.title, level=s.level, paragraphs=s.paragraphs)
+        for s in parsed.sections
+    ]
+    return _to_detail(doc, sections)
+
+
+def list_documents(db: Session, user: User, workbook_id: int) -> list[DocumentOut]:
+    access.get_visible_workbook(db, user, workbook_id)
+    return document_repository.list_by_workbook(db, workbook_id)
+
+
+def get_document(db: Session, user: User, document_id: int) -> DocumentDetailOut:
+    doc = document_repository.get_by_id(db, document_id)
+    if doc is None:
+        raise access.AccessError(404, "文档不存在")
+    access.get_visible_workbook(db, user, doc.workbook_id)
+    return _to_detail(doc, _load_sections(doc.id))
+
+
+def delete_document(db: Session, user: User, document_id: int) -> None:
+    doc = document_repository.get_by_id(db, document_id)
+    if doc is None:
+        raise access.AccessError(404, "文档不存在")
+    access.get_owned_workbook(db, user, doc.workbook_id)
+    document_repository.delete(db, doc)
