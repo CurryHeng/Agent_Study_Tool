@@ -27,7 +27,7 @@ def update_wrong_record(
     user: User = Depends(get_current_user),
 ):
     out = wrong_record_service.update_wrong_record(
-        db, user, record_id, body.wrong_answer, body.wrong_reason
+        db, user, record_id, body.model_dump(exclude_unset=True)
     )
     db.commit()
     return out

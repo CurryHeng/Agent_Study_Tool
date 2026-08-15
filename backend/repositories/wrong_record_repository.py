@@ -19,13 +19,15 @@ def get_by_id(db: Session, record_id: int) -> WrongRecord | None:
 def update(
     db: Session,
     record: WrongRecord,
-    wrong_answer: str | None,
-    wrong_reason: str | None,
+    fields: dict,
 ) -> WrongRecord:
-    if wrong_answer is not None:
-        record.wrong_answer = wrong_answer
-    if wrong_reason is not None:
-        record.wrong_reason = wrong_reason
+    """按显式传入的字段更新（fields 来自 model_dump(exclude_unset=True)）。
+
+    传 null 即清空该字段；未传的字段保持原值。
+    """
+    for key in ("wrong_answer", "wrong_reason"):
+        if key in fields:
+            setattr(record, key, fields[key])
     db.flush()
     return record
 

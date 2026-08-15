@@ -250,6 +250,32 @@ def test_update_wrong_record_reason(client, auth_headers, workbook):
     assert refreshed[0]["wrong_reason"] == "粗心大意"
 
 
+def test_update_wrong_record_can_clear_field(client, auth_headers, workbook):
+    """显式传 null 应清空字段（修复：None 此前被当作"未修改"）。"""
+    q = _create_choice(client, auth_headers, workbook)
+    client.post(f"/api/questions/{q['id']}/answer", json={"user_answer": "A"}, headers=auth_headers)
+    records = client.get("/api/wrong-records", headers=auth_headers).json()
+    rid = records[0]["id"]
+
+    client.put(f"/api/wrong-records/{rid}", json={"wrong_reason": "粗心"}, headers=auth_headers)
+    resp = client.put(
+        f"/api/wrong-records/{rid}", json={"wrong_reason": None}, headers=auth_headers
+    )
+    assert resp.status_code == 200
+    assert resp.json()["wrong_reason"] is None  # 已清空
+    assert resp.json()["wrong_answer"] is not None  # 未传字段不受影响
+
+
+def test_wrong_records_exclude_soft_deleted_questions(client, auth_headers, workbook):
+    """软删题目后，其错题记录不应再出现在错题本。"""
+    q = _create_choice(client, auth_headers, workbook)
+    client.post(f"/api/questions/{q['id']}/answer", json={"user_answer": "A"}, headers=auth_headers)
+    assert len(client.get("/api/wrong-records", headers=auth_headers).json()) == 1
+
+    client.delete(f"/api/questions/{q['id']}", headers=auth_headers)
+    assert client.get("/api/wrong-records", headers=auth_headers).json() == []
+
+
 def test_update_wrong_record_forbidden_for_other_user(client, auth_headers, workbook):
     import uuid
 

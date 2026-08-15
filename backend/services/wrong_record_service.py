@@ -31,10 +31,11 @@ def list_wrong_records(db: Session, user: User) -> list[WrongRecordOut]:
     records = wrong_record_repository.list_by_user(db, user.id)
     if not records:
         return []
-    # 批量取题目与知识点，避免逐条 N+1 查询
+    # 批量取题目与知识点，避免逐条 N+1 查询；排除已软删的题目（错题本不显示）
     questions = {
         q.id: q
         for q in question_repository.get_by_ids(db, [r.question_id for r in records])
+        if q.deleted_at is None
     }
     knowledge_ids = [q.knowledge_id for q in questions.values() if q.knowledge_id is not None]
     knowledge_map = {k.id: k for k in knowledge_repository.get_by_ids(db, knowledge_ids)}
@@ -51,14 +52,13 @@ def update_wrong_record(
     db: Session,
     user: User,
     record_id: int,
-    wrong_answer: str | None,
-    wrong_reason: str | None,
+    fields: dict,
 ) -> WrongRecordOut:
     record = wrong_record_repository.get_by_id(db, record_id)
     if record is None:
         raise access.AccessError(404, "错题记录不存在")
     if record.user_id != user.id:
         raise access.AccessError(403, "无权操作该错题记录")
-    record = wrong_record_repository.update(db, record, wrong_answer, wrong_reason)
+    record = wrong_record_repository.update(db, record, fields)
     question = question_repository.get_by_id(db, record.question_id)
     return _to_out(record, question, _fetch_knowledge(db, question))
