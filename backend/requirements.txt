@@ -1,8 +1,22 @@
-# 运行时依赖（P0-1）
+# 运行时依赖（与 EStudy conda 环境对齐，2026-08-15 补全）
+fastapi>=0.141
+uvicorn>=0.52
 SQLAlchemy>=2.0
-pydantic-settings>=2.0
+pydantic>=2.13
+pydantic-settings>=2.15
 alembic>=1.13
-fsrs==6.3.2  # FSRS-6 间隔重复调度（替代 SM-2）
+langgraph>=1.2           # Agent 工作流（主图 + 导入子图）
+langchain-openai>=1.4    # DeepSeek function calling（ReAct 主 Agent）
+langchain-core>=1.5      # 工具定义（@tool）
+chromadb>=1.5            # 向量库
+fsrs==6.3.2              # FSRS-6 间隔重复调度
+PyJWT>=2.10              # 认证
+bcrypt>=4.0              # 密码哈希
+pypdf>=6.0               # PDF 解析
+python-docx>=1.1         # Word 解析
+python-pptx>=1.0         # PPT 解析
 
 # 开发依赖（测试/检查）
 pytest>=8.0
+httpx>=0.28              # TestClient 依赖
+ruff>=0.16
