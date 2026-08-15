@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { BookMarked, Pencil } from 'lucide-vue-next'
 import { wrongRecordApi } from '../api'
 import type { WrongRecord } from '../types'
@@ -14,6 +15,12 @@ const TYPE_LABEL: Record<string, string> = {
 }
 
 const records = ref<WrongRecord[]>([])
+const route = useRoute()
+const router = useRouter()
+const knowledgeFilterId = computed(() => {
+  const raw = route.query.knowledge_id
+  return raw != null ? Number(raw) : null
+})
 const typeFilter = ref('all')
 const editingId = ref<number | null>(null)
 const editReason = ref('')
@@ -24,7 +31,7 @@ const filtered = computed(() => {
 })
 
 async function load() {
-  records.value = await wrongRecordApi.list()
+  records.value = await wrongRecordApi.list(knowledgeFilterId.value)
 }
 
 function startEdit(r: WrongRecord) {
@@ -44,15 +51,28 @@ async function saveEdit(r: WrongRecord) {
 }
 
 onMounted(load)
+watch(() => route.query.knowledge_id, load)
 </script>
 
 <template>
   <div>
-    <div class="mb-4 flex items-center justify-between">
-      <h2 class="flex items-center gap-2 text-xl font-bold text-slate-800 dark:text-white">
-        <BookMarked :size="20" class="text-rose-500" />
-        错题本
-      </h2>
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex flex-wrap items-center gap-2">
+        <h2 class="flex items-center gap-2 text-xl font-bold text-slate-800 dark:text-white">
+          <BookMarked :size="20" class="text-rose-500" />
+          错题本
+        </h2>
+        <span v-if="knowledgeFilterId != null" class="badge bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300">
+          知识点：{{ records[0]?.knowledge_name ?? `#${knowledgeFilterId}` }}
+          <button
+            class="ml-1 rounded-full px-1 text-indigo-400 transition hover:bg-indigo-100 hover:text-indigo-700 dark:hover:bg-indigo-500/20"
+            title="清除筛选"
+            @click="router.replace({ path: '/wrong' })"
+          >
+            ×
+          </button>
+        </span>
+      </div>
       <select v-model="typeFilter" class="input !w-32">
         <option value="all">全部题型</option>
         <option v-for="(label, key) in TYPE_LABEL" :key="key" :value="key">{{ label }}</option>

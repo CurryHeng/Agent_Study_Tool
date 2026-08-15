@@ -9,8 +9,8 @@ import ReviewView from '../views/ReviewView.vue'
 import WrongBookView from '../views/WrongBookView.vue'
 import MindMapView from '../views/MindMapView.vue'
 import SettingsView from '../views/SettingsView.vue'
-import UploadView from '../views/UploadView.vue'
 import StatsView from '../views/StatsView.vue'
+import AgentChatView from '../views/AgentChatView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -23,8 +23,8 @@ const router = createRouter({
     { path: '/review', component: ReviewView },
     { path: '/wrong', component: WrongBookView },
     { path: '/mindmap', component: MindMapView },
-    { path: '/upload', component: UploadView },
     { path: '/stats', component: StatsView },
+    { path: '/assistant', component: AgentChatView },
     { path: '/settings', component: SettingsView },
   ],
 })

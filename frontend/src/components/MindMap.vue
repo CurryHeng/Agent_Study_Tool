@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
-import { Transformer } from 'markmap-lib'
+import type { IPureNode } from 'markmap-common'
 import { Markmap } from 'markmap-view'
 import type { MindMapNode } from '../types'
 
@@ -8,18 +8,17 @@ const props = defineProps<{ root: MindMapNode | null }>()
 const svgEl = ref<SVGSVGElement | null>(null)
 let mm: Markmap | null = null
 
-function toMarkmap(node: MindMapNode): Record<string, unknown> {
+function toMarkmap(node: MindMapNode): IPureNode {
   return { content: node.label, children: (node.children || []).map(toMarkmap) }
 }
 
 function render() {
   if (!props.root || !svgEl.value) return
-  const transformer = new Transformer()
-  const data = transformer.transform(toMarkmap(props.root) as never)
+  const data = toMarkmap(props.root)
   if (!mm) {
-    mm = Markmap.create(svgEl.value, {}, data.root)
+    mm = Markmap.create(svgEl.value, {}, data)
   } else {
-    mm.setData(data.root)
+    mm.setData(data)
     mm.fit()
   }
 }

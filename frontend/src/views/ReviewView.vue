@@ -40,6 +40,7 @@ const due = ref<DueItem[]>([])
 const index = ref(0)
 const started = ref(false)
 const loading = ref(false)
+const error = ref('')
 const finished = ref(false)
 
 // 当前题作答状态
@@ -108,8 +109,15 @@ function saveSession() {
 
 async function start() {
   loading.value = true
-  due.value = await reviewApi.due(20, favoritesOnly)
-  loading.value = false
+  error.value = ''
+  try {
+    due.value = await reviewApi.due(20, favoritesOnly)
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '加载复习题失败，请稍后重试'
+    return
+  } finally {
+    loading.value = false
+  }
   started.value = true
   if (resume.value && resume.value.mode === mode.value && resume.value.index > 0 && resume.value.index < due.value.length) {
     index.value = resume.value.index
@@ -263,6 +271,7 @@ onBeforeUnmount(stopTimer)
 
       <div class="card space-y-4">
         <p class="text-sm text-slate-500 dark:text-slate-400">选择复习模式（本轮不可切换）</p>
+        <p v-if="error" class="text-sm text-rose-500">{{ error }}</p>
         <div class="space-y-2">
           <button
             v-for="m in MODES"
@@ -537,6 +546,14 @@ onBeforeUnmount(stopTimer)
         <Play :size="15" class="fill-current" />
         完成复习，查看结果
       </button>
+    </div>
+
+    <!-- 空状态：没有待复习题目 -->
+    <div v-else class="card py-12 text-center animate-fade-in">
+      <p class="text-sm text-slate-400 dark:text-slate-500">
+        暂无待复习的题目。去题库看看，或先导入资料生成题目。
+      </p>
+      <button class="btn-primary mt-4" @click="started = false">返回模式选择</button>
     </div>
   </div>
 </template>

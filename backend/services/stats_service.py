@@ -67,27 +67,33 @@ def get_stats(db: Session, user: User) -> dict:
                 bucket["count"] += 1
                 break
 
-    # 知识点掌握热力图（按答题记录错误率）
-    heatmap: dict[str, dict] = {}
+    # 知识点掌握热力图（按答题记录错误率，聚合到 knowledge_id，前端可跳转错题本）
+    heatmap: dict[int | str, dict] = {}
     answered_ids = {a.question_id for a in answers}
+    knowledge_by_qid: dict[int, tuple[int | None, str]] = {}
     if answered_ids:
         rows = (
-            db.query(Question.id, Knowledge.name)
+            db.query(Question.id, Question.knowledge_id, Knowledge.name)
             .outerjoin(Knowledge, Knowledge.id == Question.knowledge_id)
             .filter(Question.id.in_(answered_ids))
             .all()
         )
-        name_by_qid = {qid: (name or "未分类") for qid, name in rows}
-        for a in answers:
-            name = name_by_qid.get(a.question_id)
-            if name is None:
-                continue
-            entry = heatmap.setdefault(name, {"total": 0, "errors": 0})
-            entry["total"] += 1
-            if a.is_correct == 0:
-                entry["errors"] += 1
+        for qid, kid, name in rows:
+            knowledge_by_qid[qid] = (kid, name or "未分类")
+    for a in answers:
+        info = knowledge_by_qid.get(a.question_id)
+        if info is None:
+            continue
+        kid, name = info
+        key: int | str = kid if kid is not None else "none"
+        entry = heatmap.setdefault(
+            key, {"knowledge_id": kid, "name": name, "total": 0, "errors": 0}
+        )
+        entry["total"] += 1
+        if a.is_correct == 0:
+            entry["errors"] += 1
     knowledge_heatmap = sorted(
-        ({"name": n, **s} for n, s in heatmap.items() if s["total"] > 0),
+        (v for v in heatmap.values() if v["total"] > 0),
         key=lambda x: x["errors"] / x["total"],
         reverse=True,
     )
@@ -139,6 +145,21 @@ def get_stats(db: Session, user: User) -> dict:
         for a in recent_answers
     ]
 
+    # 学习活跃热力图（近 365 天每日答题/复习活跃度，数据源 answer_records）
+    activity_map: dict[str, dict[str, int]] = {}
+    activity_cutoff = today - timedelta(days=364)
+    for a in answers:
+        if a.created_at is None or a.created_at.date() < activity_cutoff:
+            continue
+        day = a.created_at.date().isoformat()
+        entry = activity_map.setdefault(day, {"total": 0, "correct": 0})
+        entry["total"] += 1
+        if a.is_correct == 1:
+            entry["correct"] += 1
+    activity_heatmap = [
+        {"date": day, **stats} for day, stats in sorted(activity_map.items())
+    ]
+
     # 本周学习时长
     week_answers = [a for a in answers if a.created_at >= monday]
     week_minutes = round(sum((a.time_spent or 0) for a in week_answers) / 60)
@@ -159,6 +180,7 @@ def get_stats(db: Session, user: User) -> dict:
         "mastery": mastery,
         "accuracy_buckets": accuracy_buckets,
         "knowledge_heatmap": knowledge_heatmap,
+        "activity_heatmap": activity_heatmap,
         "wrong_reasons": wrong_reasons,
         "recent": recent,
         "week_minutes": week_minutes,

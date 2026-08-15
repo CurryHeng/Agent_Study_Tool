@@ -13,10 +13,11 @@ router = APIRouter(prefix="/api/wrong-records", tags=["wrong-records"])
 
 @router.get("", response_model=list[WrongRecordOut])
 def list_wrong_records(
+    knowledge_id: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    return wrong_record_service.list_wrong_records(db, user)
+    return wrong_record_service.list_wrong_records(db, user, knowledge_id)
 
 
 @router.put("/{record_id}", response_model=WrongRecordOut)

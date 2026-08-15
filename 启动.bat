@@ -1,8 +1,11 @@
 @echo off
 setlocal
+chcp 65001 >nul
 
-rem Locate the EStudy env Python via %USERPROFILE% (no hardcoded non-ASCII path)
+rem Locate the EStudy env Python (try common install locations)
 set "PY=%USERPROFILE%\.conda\envs\EStudy\python.exe"
+if not exist "%PY%" set "PY=D:\ProgramData\miniconda3\envs\EStudy\python.exe"
+if not exist "%PY%" set "PY=C:\ProgramData\miniconda3\envs\EStudy\python.exe"
 
 if not exist "%PY%" (
     echo [ERROR] EStudy Python not found:
@@ -13,13 +16,13 @@ if not exist "%PY%" (
 )
 
 echo [1/2] Starting backend on port 8080 ...
-start "EStudy Backend" /D "%~dp0backend" cmd /k "%PY% -m uvicorn main:app --reload --port 8080"
+start "EStudy Backend" /D "%~dp0backend" cmd /k ""%PY%" -m uvicorn main:app --reload --port 8080"
 
-echo [2/2] Starting frontend on port 5173 ...
-start "EStudy Frontend" /D "%~dp0frontend" cmd /k "npm run dev"
+echo [2/2] Starting frontend on port 5175 ...
+start "EStudy Frontend" /D "%~dp0frontend" cmd /k "npm.cmd run dev"
 
 echo Waiting for services to start...
-timeout /t 8 /nobreak >nul
+%SystemRoot%\System32\timeout.exe /t 8 /nobreak >nul
 
 echo Opening http://localhost:5175 ...
 start "" http://localhost:5175

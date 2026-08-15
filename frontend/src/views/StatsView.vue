@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   Award,
   BarChart3,
@@ -14,9 +15,11 @@ import {
   TrendingUp,
 } from 'lucide-vue-next'
 import { statsApi } from '../api'
-import type { Stats } from '../types'
+import type { HeatmapItem, Stats } from '../types'
+import HeatmapCalendar from '../components/HeatmapCalendar.vue'
 
 const stats = ref<Stats | null>(null)
+const router = useRouter()
 const loading = ref(true)
 const error = ref('')
 
@@ -73,6 +76,11 @@ function heatmapCls(rate: number) {
   if (rate >= 0.3)
     return 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-500/20 dark:text-orange-300 dark:border-orange-500/40'
   return 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/40'
+}
+
+function goToKnowledge(item: HeatmapItem) {
+  if (item.knowledge_id == null) return
+  router.push({ path: '/wrong', query: { knowledge_id: String(item.knowledge_id) } })
 }
 
 onMounted(async () => {
@@ -166,24 +174,36 @@ onMounted(async () => {
       </section>
 
       <!-- 知识点掌握热力图 -->
-      <section v-if="stats.knowledge_heatmap.length > 0" class="card">
+      <section v-if="stats.knowledge_heatmap && stats.knowledge_heatmap.length > 0" class="card">
         <h3 class="mb-4 flex items-center gap-1.5 text-sm font-semibold text-slate-800 dark:text-white">
           <Sparkles :size="15" class="text-violet-500" />
           知识点掌握热力图
-          <span class="text-xs font-normal text-slate-400">（错误率越高颜色越深）</span>
+          <span class="text-xs font-normal text-slate-400">（错误率越高颜色越深，点击跳转错题本）</span>
         </h3>
         <div class="flex flex-wrap gap-2">
-          <div
+          <button
             v-for="k in stats.knowledge_heatmap"
-            :key="k.name"
-            class="flex cursor-default items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition-transform hover:scale-105"
-            :class="heatmapCls(k.total > 0 ? k.errors / k.total : 0)"
-            :title="`${k.name}: 错误 ${k.errors}/${k.total}`"
+            :key="`${k.knowledge_id ?? 'none'}-${k.name}`"
+            type="button"
+            class="flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition-all hover:scale-105 hover:shadow-sm disabled:hover:scale-100"
+            :class="[heatmapCls(k.total > 0 ? k.errors / k.total : 0), k.knowledge_id == null ? 'cursor-default opacity-80' : 'cursor-pointer']"
+            :disabled="k.knowledge_id == null"
+            :title="`${k.name}: 错误 ${k.errors}/${k.total}${k.knowledge_id == null ? '' : '（点击查看错题）'}`"
+            @click="goToKnowledge(k)"
           >
             <span class="max-w-[120px] truncate">{{ k.name }}</span>
             <span class="tabular-nums opacity-70">{{ k.total > 0 ? Math.round((k.errors / k.total) * 100) : 0 }}%</span>
-          </div>
+          </button>
         </div>
+      </section>
+
+      <!-- 学习活跃热力图（日历式，数据源 answer_records） -->
+      <section v-if="stats.activity_heatmap && stats.activity_heatmap.length > 0" class="card">
+        <h3 class="mb-4 flex items-center gap-1.5 text-sm font-semibold text-slate-800 dark:text-white">
+          <CalendarDays :size="15" class="text-emerald-500" />
+          学习活跃热力图
+        </h3>
+        <HeatmapCalendar :days="stats.activity_heatmap" />
       </section>
 
       <!-- 错因分类 -->

@@ -17,6 +17,7 @@ def _to_out(r, question: Question | None, knowledge: Knowledge | None) -> WrongR
         question_content=question.content if question else "",
         correct_answer=question.answer if question else "",
         question_type=question.type.value if question else "",
+        knowledge_id=question.knowledge_id if question else None,
         knowledge_name=knowledge.name if knowledge else None,
     )
 
@@ -27,7 +28,9 @@ def _fetch_knowledge(db: Session, question: Question | None) -> Knowledge | None
     return knowledge_repository.get_by_id(db, question.knowledge_id)
 
 
-def list_wrong_records(db: Session, user: User) -> list[WrongRecordOut]:
+def list_wrong_records(
+    db: Session, user: User, knowledge_id: int | None = None
+) -> list[WrongRecordOut]:
     records = wrong_record_repository.list_by_user(db, user.id)
     if not records:
         return []
@@ -37,6 +40,10 @@ def list_wrong_records(db: Session, user: User) -> list[WrongRecordOut]:
         for q in question_repository.get_by_ids(db, [r.question_id for r in records])
         if q.deleted_at is None
     }
+    if knowledge_id is not None:
+        questions = {
+            qid: q for qid, q in questions.items() if q.knowledge_id == knowledge_id
+        }
     knowledge_ids = [q.knowledge_id for q in questions.values() if q.knowledge_id is not None]
     knowledge_map = {k.id: k for k in knowledge_repository.get_by_ids(db, knowledge_ids)}
     result: list[WrongRecordOut] = []

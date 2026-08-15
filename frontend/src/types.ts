@@ -141,9 +141,16 @@ export interface Bucket {
 }
 
 export interface HeatmapItem {
+  knowledge_id: number | null
   name: string
   total: number
   errors: number
+}
+
+export interface ActivityDay {
+  date: string
+  total: number
+  correct: number
 }
 
 export interface ReasonItem {
@@ -169,8 +176,46 @@ export interface Stats {
   mastery: Record<string, number>
   accuracy_buckets: Bucket[]
   knowledge_heatmap: HeatmapItem[]
+  activity_heatmap: ActivityDay[]
   wrong_reasons: ReasonItem[]
   recent: RecentRecord[]
   week_minutes: number
   week_days: number
+}
+
+// ── AI 助手（#33 AgentChatView 新契约） ──────────────────
+export interface AgentStep {
+  tool: string
+  args?: Record<string, unknown> | null
+  ok: boolean
+  summary?: string | null
+}
+
+export interface AgentProposal {
+  proposal_id: string
+  action: string
+  target?: Record<string, unknown> | null
+  changes?: Record<string, unknown> | null
+  impact?: string | null
+  expires_in_sec?: number | null
+}
+
+export interface AgentChatContext {
+  view?: string | null
+  selected_knowledge_id?: number | null
+  current_question_id?: number | null
+}
+
+export interface AgentChatResponse {
+  task_id?: string | null
+  conversation_id?: number | null
+  reply: string
+  steps?: AgentStep[] | null
+  proposals?: AgentProposal[] | null
+  navigate?: string | null
+}
+
+export interface AgentConfirmResponse {
+  ok: boolean
+  result?: Record<string, unknown> | null
 }

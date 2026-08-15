@@ -10,10 +10,9 @@ import {
   LogOut,
   Moon,
   Network,
-  PenLine,
   Settings,
+  Sparkles,
   Sun,
-  UploadCloud,
 } from 'lucide-vue-next'
 import { useAuthStore } from './stores/auth'
 import { useDarkMode } from './lib/darkMode'
@@ -27,11 +26,10 @@ const initial = computed(() => (auth.user?.username || '?').charAt(0).toUpperCas
 const navItems = [
   { to: '/', label: '首页', icon: Home },
   { to: '/questions', label: '题库', icon: Library },
-  { to: '/review', label: '刷题', icon: PenLine },
-  { to: '/upload', label: '导入', icon: UploadCloud },
   { to: '/stats', label: '统计', icon: BarChart3 },
+  { to: '/mindmap', label: '可视化', icon: Network },
   { to: '/wrong', label: '错题本', icon: BookX },
-  { to: '/mindmap', label: '导图', icon: Network },
+  { to: '/assistant', label: '智能助手', icon: Sparkles },
   { to: '/settings', label: '设置', icon: Settings },
 ]
 

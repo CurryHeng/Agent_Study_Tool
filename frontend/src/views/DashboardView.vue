@@ -2,274 +2,184 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  BookOpen,
-  Brain,
-  CheckCircle2,
+  BarChart3,
+  BookX,
   ChevronRight,
-  Clock,
-  Layers,
+  Library,
+  Loader2,
   Network,
   Play,
-  Send,
   Sparkles,
-  Star,
+  UploadCloud,
 } from 'lucide-vue-next'
-import { agentApi, reviewApi, workbookApi } from '../api'
+import { documentApi, reviewApi, workbookApi } from '../api'
 import { SYSTEM_WORKBOOK_ID } from '../lib/constants'
-import type { DueItem, Workbook } from '../types'
+import type { Document, Workbook } from '../types'
 
 const router = useRouter()
 const workbooks = ref<Workbook[]>([])
-const due = ref<DueItem[]>([])
-const favorites = ref<DueItem[]>([])
-const newName = ref('')
-const agentMessage = ref('')
-const agentLoading = ref(false)
-const agentResult = ref<{ task_id: string; intent: string; result: Record<string, unknown> } | null>(null)
+const dueCount = ref(0)
 
-const builtin: Workbook = {
-  id: SYSTEM_WORKBOOK_ID,
-  user_id: 0,
-  name: '内置题库',
-  description: '系统内置参考题库（只读）',
-  created_at: '',
-  updated_at: '',
-}
+// ── 导入 ──
+const selectedWb = ref<number | null>(null)
+const docs = ref<Document[]>([])
+const uploading = ref(false)
+const uploadError = ref('')
+const uploadOk = ref('')
 
-const allWorkbooks = computed(() => [builtin, ...workbooks.value])
+const ALLOWED = ['.pdf', '.docx', '.pptx', '.md', '.txt', '.html', '.htm']
+const MAX_SIZE = 10 * 1024 * 1024
 
-const stats = computed(() => {
-  const cards = due.value.map((d) => d.card)
-  const reviewed = cards.filter((c) => c.last_review).length
-  return { due: due.value.length, reviewed, total: cards.length }
-})
+const userWorkbooks = computed(() => workbooks.value.filter((w) => w.id !== SYSTEM_WORKBOOK_ID))
 
-const favoriteCount = computed(() => favorites.value.length)
-
-const dueByKnowledge = computed(() => {
-  const map = new Map<string, number>()
-  for (const d of due.value) {
-    const name = d.question.knowledge_name || '未分类'
-    map.set(name, (map.get(name) || 0) + 1)
-  }
-  return [...map.entries()].sort((a, b) => b[1] - a[1])
-})
-
-const maxKnowledgeCount = computed(() =>
-  dueByKnowledge.value.reduce((m, [, c]) => Math.max(m, c), 1),
-)
+const cards = [
+  { to: '/review', label: '刷题复习', desc: 'FSRS 智能安排', icon: Play, color: 'from-emerald-500 to-teal-600' },
+  { to: '/questions', label: '题库', desc: '浏览 / AI 出题', icon: Library, color: 'from-indigo-500 to-violet-600' },
+  { to: '/mindmap', label: '可视化', desc: '知识思维导图', icon: Network, color: 'from-sky-500 to-blue-600' },
+  { to: '/wrong', label: '错题本', desc: '错因与回顾', icon: BookX, color: 'from-rose-500 to-pink-600' },
+  { to: '/stats', label: '统计', desc: '掌握度热力图', icon: BarChart3, color: 'from-amber-500 to-orange-600' },
+  { to: '/assistant', label: '智能助手', desc: '对话完成任务', icon: Sparkles, color: 'from-violet-500 to-purple-600' },
+]
 
 async function load() {
   workbooks.value = await workbookApi.list()
-  due.value = await reviewApi.due()
-  favorites.value = await reviewApi.due(20, true)
+  if (!selectedWb.value && userWorkbooks.value.length) {
+    selectedWb.value = userWorkbooks.value[0].id
+  }
+  if (selectedWb.value) await loadDocs()
+  dueCount.value = (await reviewApi.due(50)).length
 }
 
-async function createWorkbook() {
-  if (!newName.value.trim()) return
-  await workbookApi.create(newName.value.trim())
-  newName.value = ''
-  await load()
+async function loadDocs() {
+  if (!selectedWb.value) return
+  docs.value = await documentApi.list(selectedWb.value)
 }
 
-async function sendAgent() {
-  if (!agentMessage.value.trim() || agentLoading.value) return
-  agentLoading.value = true
+async function onPickFile(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  ;(e.target as HTMLInputElement).value = ''
+  if (!file) return
+  const ext = '.' + (file.name.split('.').pop() || '').toLowerCase()
+  uploadError.value = ''
+  uploadOk.value = ''
+  if (!ALLOWED.includes(ext)) {
+    uploadError.value = `不支持的文件类型：${ext}`
+    return
+  }
+  if (file.size > MAX_SIZE) {
+    uploadError.value = '文件超过 10MB 限制'
+    return
+  }
+  if (!selectedWb.value) {
+    uploadError.value = '请先创建练习册'
+    return
+  }
+  uploading.value = true
   try {
-    agentResult.value = await agentApi.chat(agentMessage.value)
-    agentMessage.value = ''
+    await documentApi.upload(file, selectedWb.value)
+    uploadOk.value = `「${file.name}」导入成功，知识树已自动生成`
+    await loadDocs()
+  } catch (err) {
+    uploadError.value = err instanceof Error ? err.message : '上传失败'
   } finally {
-    agentLoading.value = false
+    uploading.value = false
   }
 }
-
-const agentQuestions = computed(() => {
-  const r = agentResult.value?.result
-  return (r && Array.isArray(r.questions) ? r.questions : []) as Record<string, unknown>[]
-})
 
 onMounted(load)
 </script>
 
 <template>
   <div class="space-y-6">
-    <!-- Hero -->
-    <section class="hero-grad relative overflow-hidden rounded-3xl p-8 text-white shadow-xl shadow-emerald-600/20 animate-slide-up">
-      <div class="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/10"></div>
-      <div class="pointer-events-none absolute -bottom-16 right-24 h-48 w-48 rounded-full bg-white/5"></div>
-      <div class="pointer-events-none absolute right-16 top-6 hidden opacity-20 sm:block">
-        <Brain :size="120" />
-      </div>
-
+    <!-- 欢迎条 -->
+    <section class="hero-grad relative overflow-hidden rounded-3xl p-7 text-white shadow-xl shadow-emerald-600/20">
       <p class="text-sm font-medium text-emerald-100">EStudy · 你的 AI 学习伙伴</p>
-      <h1 class="mt-2 text-3xl font-bold tracking-tight">
-        {{ stats.due > 0 ? `今天有 ${stats.due} 道题待复习` : '全部搞定！' }}
+      <h1 class="mt-1.5 text-2xl font-bold tracking-tight">
+        {{ dueCount > 0 ? `今天有 ${dueCount} 道题待复习` : '今日复习已完成' }}
       </h1>
-      <p class="mt-2 max-w-md text-sm text-emerald-100/90">
-        {{ stats.due > 0 ? '保持节奏，每天进步一点点。' : '没有待复习的题目，去题库刷几道新的吧。' }}
-      </p>
       <button
-        class="mt-6 inline-flex items-center gap-2 rounded-xl bg-white px-5 py-2.5 font-semibold text-teal-700 shadow-md transition hover:bg-emerald-50 active:scale-[0.98]"
+        class="mt-4 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-teal-700 shadow-md transition hover:bg-emerald-50 active:scale-[0.98]"
         @click="router.push('/review')"
       >
-        <Play :size="16" class="fill-current" />
+        <Play :size="15" class="fill-current" />
         开始刷题
       </button>
     </section>
 
-    <div class="stagger-children space-y-6">
-      <!-- 统计 -->
-      <section class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <div class="card card-hover flex items-center gap-4 !p-4">
-          <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-orange-600 dark:bg-orange-500/15 dark:text-orange-400">
-            <Clock :size="22" />
-          </span>
-          <div>
-            <p class="text-xs font-medium text-slate-500 dark:text-slate-400">待复习</p>
-            <p class="text-2xl font-bold text-slate-800 dark:text-white">{{ stats.due }}</p>
-          </div>
-        </div>
-        <div class="card card-hover flex items-center gap-4 !p-4">
-          <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400">
-            <CheckCircle2 :size="22" />
-          </span>
-          <div>
-            <p class="text-xs font-medium text-slate-500 dark:text-slate-400">今日已复习</p>
-            <p class="text-2xl font-bold text-slate-800 dark:text-white">{{ stats.reviewed }}</p>
-          </div>
-        </div>
-        <div class="card card-hover flex items-center gap-4 !p-4">
-          <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400">
-            <Layers :size="22" />
-          </span>
-          <div>
-            <p class="text-xs font-medium text-slate-500 dark:text-slate-400">复习卡总数</p>
-            <p class="text-2xl font-bold text-slate-800 dark:text-white">{{ stats.total }}</p>
-          </div>
-        </div>
-      </section>
+    <!-- 导入资料 -->
+    <section class="card">
+      <h3 class="mb-3 flex items-center gap-2 font-semibold text-slate-800 dark:text-white">
+        <UploadCloud :size="17" class="text-indigo-500" />
+        导入学习资料
+      </h3>
+      <div class="flex flex-wrap items-center gap-2">
+        <select v-model="selectedWb" class="input !w-auto !py-1.5 text-sm" @change="loadDocs">
+          <option :value="null" disabled>选择练习册</option>
+          <option v-for="wb in userWorkbooks" :key="wb.id" :value="wb.id">{{ wb.name }}</option>
+        </select>
+        <label
+          class="btn-primary inline-flex cursor-pointer items-center gap-2 !py-1.5 text-sm"
+          :class="uploading ? 'pointer-events-none opacity-60' : ''"
+        >
+          <Loader2 v-if="uploading" :size="14" class="animate-spin" />
+          <UploadCloud v-else :size="14" />
+          {{ uploading ? '导入中…' : '选择文件' }}
+          <input type="file" class="hidden" :accept="ALLOWED.join(',')" @change="onPickFile" />
+        </label>
+        <span class="text-xs text-slate-400">支持 PDF / Word / PPT / Markdown，≤10MB，导入后自动生成知识树</span>
+      </div>
+      <p v-if="uploadError" class="mt-2 text-xs text-rose-500">{{ uploadError }}</p>
+      <p v-if="uploadOk" class="mt-2 text-xs text-emerald-600 dark:text-emerald-400">{{ uploadOk }}</p>
+      <div v-if="docs.length" class="mt-3 flex flex-wrap gap-2">
+        <span
+          v-for="d in docs.slice(0, 6)"
+          :key="d.id"
+          class="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+        >
+          {{ d.filename }}
+        </span>
+        <span v-if="docs.length > 6" class="px-1 py-1 text-xs text-slate-400">等 {{ docs.length }} 份</span>
+      </div>
+    </section>
 
-      <!-- 收藏夹 -->
+    <!-- 功能卡片（自由选择） -->
+    <section class="grid grid-cols-2 gap-3 sm:grid-cols-3">
       <button
-        v-if="favoriteCount > 0"
-        class="card card-hover flex w-full items-center justify-between !py-3 text-left"
-        @click="router.push('/review?favorites=1')"
+        v-for="c in cards"
+        :key="c.to"
+        class="card card-hover flex flex-col items-start gap-2 text-left"
+        @click="router.push(c.to)"
       >
-        <div class="flex items-center gap-2.5">
-          <Star :size="18" class="fill-amber-400 text-amber-400" />
-          <p class="font-medium text-slate-700 dark:text-slate-200">收藏夹</p>
-          <span class="badge bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">{{ favoriteCount }} 题</span>
+        <span
+          class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br text-white"
+          :class="c.color"
+        >
+          <component :is="c.icon" :size="18" />
+        </span>
+        <div class="flex w-full items-center justify-between">
+          <p class="font-semibold text-slate-800 dark:text-white">{{ c.label }}</p>
+          <ChevronRight :size="15" class="text-slate-300" />
         </div>
-        <ChevronRight :size="18" class="text-slate-400" />
+        <p class="text-xs text-slate-400">{{ c.desc }}</p>
       </button>
+    </section>
 
-      <!-- 待复习知识点分布 -->
-      <section v-if="dueByKnowledge.length > 0" class="card">
-        <h3 class="mb-4 flex items-center gap-2 font-semibold text-slate-800 dark:text-white">
-          <Brain :size="17" class="text-indigo-500" />
-          待复习知识点分布
-        </h3>
-        <div class="space-y-3">
-          <div v-for="[name, count] in dueByKnowledge" :key="name">
-            <div class="mb-1 flex items-center justify-between text-sm">
-              <span class="text-slate-600 dark:text-slate-300">{{ name }}</span>
-              <span class="font-medium text-slate-400">{{ count }} 题</span>
-            </div>
-            <div class="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-              <div
-                class="progress-bar h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500"
-                :style="{ width: `${(count / maxKnowledgeCount) * 100}%` }"
-              ></div>
-            </div>
+    <!-- 我的练习册 -->
+    <section v-if="userWorkbooks.length">
+      <h3 class="mb-3 font-semibold text-slate-800 dark:text-white">我的练习册</h3>
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div v-for="wb in userWorkbooks" :key="wb.id" class="card card-hover">
+          <p class="font-medium text-slate-700 dark:text-slate-200">{{ wb.name }}</p>
+          <div class="mt-3 flex gap-2">
+            <button class="btn-secondary flex-1 !py-1.5 text-xs" @click="router.push(`/questions?workbook_id=${wb.id}`)">
+              题库
+            </button>
+            <button class="btn-secondary flex-1 !py-1.5 text-xs" @click="router.push(`/mindmap?workbook_id=${wb.id}`)">
+              可视化
+            </button>
           </div>
         </div>
-      </section>
-
-      <!-- 题库 -->
-      <section>
-        <h3 class="mb-3 font-semibold text-slate-800 dark:text-white">题库</h3>
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div
-            v-for="wb in allWorkbooks"
-            :key="wb.id"
-            class="card card-hover"
-          >
-            <div class="flex items-start justify-between gap-3">
-              <div class="flex items-center gap-3">
-                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white">
-                  <BookOpen :size="18" />
-                </span>
-                <div>
-                  <p class="font-medium text-slate-700 dark:text-slate-200">{{ wb.name }}</p>
-                  <p class="text-xs text-slate-400">{{ wb.description || '练习册' }}</p>
-                </div>
-              </div>
-            </div>
-            <div class="mt-4 flex gap-2">
-              <button class="btn-secondary flex-1 !py-1.5 text-xs" @click="router.push(`/questions?workbook_id=${wb.id}`)">
-                题库
-              </button>
-              <button class="btn-secondary flex-1 !py-1.5 text-xs" @click="router.push(`/mindmap?workbook_id=${wb.id}`)">
-                思维导图
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- 新建练习册 -->
-      <section class="card">
-        <h3 class="mb-3 flex items-center gap-2 font-semibold text-slate-800 dark:text-white">
-          <Network :size="17" class="text-indigo-500" />
-          新建练习册
-        </h3>
-        <div class="flex gap-2">
-          <input v-model="newName" class="input" placeholder="练习册名称" @keyup.enter="createWorkbook" />
-          <button class="btn-primary shrink-0" @click="createWorkbook">创建</button>
-        </div>
-      </section>
-
-      <!-- AI 助手 -->
-      <section class="card">
-        <h3 class="mb-3 flex items-center gap-2 font-semibold text-slate-800 dark:text-white">
-          <Sparkles :size="17" class="text-violet-500" />
-          AI 助手
-        </h3>
-        <div class="flex gap-2">
-          <input
-            v-model="agentMessage"
-            class="input"
-            placeholder="例如：帮我生成 5 道选择题（需先在 .env 配置 DEEPSEEK_API_KEY）"
-            @keyup.enter="sendAgent"
-          />
-          <button class="btn-primary shrink-0" :disabled="agentLoading" @click="sendAgent">
-            <Send :size="15" />
-            发送
-          </button>
-        </div>
-
-        <div v-if="agentResult" class="mt-4 space-y-2 animate-fade-in">
-          <template v-if="agentResult.intent === 'generate_questions'">
-            <div
-              v-for="q in agentQuestions"
-              :key="String(q.id)"
-              class="rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-700"
-            >
-              <p class="font-medium text-slate-700 dark:text-slate-200">{{ q.content }}</p>
-              <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">答案：{{ q.answer }}</p>
-            </div>
-          </template>
-          <p v-else-if="agentResult.intent === 'generate_mindmap'" class="text-sm text-slate-600 dark:text-slate-300">
-            已生成思维导图，可前往「思维导图」查看。
-          </p>
-          <p v-else-if="agentResult.intent === 'list_documents'" class="text-sm text-slate-600 dark:text-slate-300">
-            已为你列出文档。
-          </p>
-          <p v-else class="text-sm text-slate-600 dark:text-slate-300">
-            {{ (agentResult.result && agentResult.result.reply) || '已完成' }}
-          </p>
-        </div>
-      </section>
-    </div>
+      </div>
+    </section>
   </div>
 </template>

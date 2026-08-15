@@ -13,6 +13,7 @@ class WrongRecordOut(BaseModel):
     question_content: str
     correct_answer: str
     question_type: str
+    knowledge_id: int | None = None
     knowledge_name: str | None = None
 
 

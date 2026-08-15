@@ -1,5 +1,8 @@
 import { api, getRefreshToken, setAuth, uploadWithProgress } from './client'
 import type {
+  AgentChatContext,
+  AgentChatResponse,
+  AgentConfirmResponse,
   AnswerResult,
   Document,
   DocumentDetail,
@@ -71,7 +74,8 @@ export const reviewApi = {
 
 // ── 错题本 ──────────────────────────────────────────────
 export const wrongRecordApi = {
-  list: () => api.get<WrongRecord[]>('/wrong-records'),
+  list: (knowledgeId?: number | null) =>
+    api.get<WrongRecord[]>(`/wrong-records${knowledgeId != null ? `?knowledge_id=${knowledgeId}` : ''}`),
   update: (id: number, body: Record<string, unknown>) => api.put<WrongRecord>(`/wrong-records/${id}`, body),
 }
 
@@ -101,10 +105,22 @@ export const statsApi = {
 }
 
 // ── AI 助手 ─────────────────────────────────────────────
+// #33 新契约：POST /api/agent/chat 返回 reply + steps[] + proposals[] + navigate
 export const agentApi = {
-  chat: (message: string, workbookId?: number) =>
-    api.post<{ task_id: string; intent: string; result: Record<string, unknown> }>(
-      '/agent/chat',
-      { message, workbook_id: workbookId },
-    ),
+  chat: (
+    message: string,
+    options: {
+      workbookId?: number | null
+      conversationId?: number | null
+      context?: AgentChatContext | null
+    } = {},
+  ) => {
+    const body: Record<string, unknown> = { message }
+    if (options.workbookId != null) body.workbook_id = options.workbookId
+    if (options.conversationId != null) body.conversation_id = options.conversationId
+    if (options.context) body.context = options.context
+    return api.post<AgentChatResponse>('/agent/chat', body)
+  },
+  confirm: (proposalId: string, approved: boolean) =>
+    api.post<AgentConfirmResponse>('/agent/confirm', { proposal_id: proposalId, approved }),
 }

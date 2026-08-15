@@ -8,9 +8,16 @@ class BucketOut(BaseModel):
 
 
 class HeatmapItemOut(BaseModel):
+    knowledge_id: int | None = None
     name: str
     total: int
     errors: int
+
+
+class ActivityDayOut(BaseModel):
+    date: str
+    total: int
+    correct: int
 
 
 class ReasonOut(BaseModel):
@@ -36,6 +43,7 @@ class StatsOut(BaseModel):
     mastery: dict[str, int]
     accuracy_buckets: list[BucketOut]
     knowledge_heatmap: list[HeatmapItemOut]
+    activity_heatmap: list[ActivityDayOut]
     wrong_reasons: list[ReasonOut]
     recent: list[RecentOut]
     week_minutes: int
