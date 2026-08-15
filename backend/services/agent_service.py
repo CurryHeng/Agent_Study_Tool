@@ -55,13 +55,26 @@ def run_task(
     intent = result.get("intent") or "chat"
     errors = result.get("errors") or []
     status = AgentTaskStatus.failed if errors else AgentTaskStatus.success
+
+    def _dump_fallback(obj):
+        """AgentTask.result_data 统一存 JSON 字符串（Pydantic 模型/datetime/枚举等均可序列化）。"""
+        if hasattr(obj, "model_dump"):
+            return obj.model_dump(mode="json")
+        if hasattr(obj, "isoformat"):
+            return obj.isoformat()
+        if hasattr(obj, "value"):  # 枚举
+            return obj.value
+        return str(obj)
+
     agent_task_repository.create(
         db,
         user.id,
         intent,
         input_data=user_request,
         status=status,
-        result_data=json.dumps(result.get("final_result") or {}, ensure_ascii=False),
+        result_data=json.dumps(
+            result.get("final_result") or {}, ensure_ascii=False, default=_dump_fallback
+        ),
         error_message="; ".join(str(e) for e in errors)[:500] or None,
     )
 

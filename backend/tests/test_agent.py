@@ -232,3 +232,63 @@ def test_agent_task_recorded_success(client, auth_headers, registered_user, sess
     )
     assert task is not None
     assert task.status == AgentTaskStatus.success
+
+
+# ── 回归：Navigator 返回字符串参数时真实 generate_fn 不崩溃 ──
+def test_string_params_real_generate_fn(
+    client, auth_headers, registered_user, session, workbook, monkeypatch
+):
+    """LLM JSON 参数为字符串（question_type/count/difficulty）时，
+    真实 generate_fn 曾因 str 无 .value 抛 AttributeError（500）。"""
+    from workflow import graph as graph_mod
+
+    monkeypatch.setattr(
+        graph_mod, "get_llm", lambda: MockLLM([{"questions": [_choice("1+1=?")]}])
+    )
+    user = _user(session, registered_user)
+    nav = _nav(
+        "generate_questions",
+        {
+            "workbook_id": workbook["id"],
+            "question_type": "single_choice",  # 字符串（LLM 实际返回形态）
+            "count": "2",  # 字符串数字
+            "difficulty": "1",
+        },
+    )
+
+    result = agent_service.run_task(
+        session,
+        user,
+        "出2道题",
+        navigator_llm=nav,
+        review_fn=lambda q, p: True,
+        save_fn=_echo_save,
+    )
+    assert result["intent"] == "generate_questions"
+    assert len(result["result"]["questions"]) == 1
+
+
+def test_invalid_question_type_falls_back(
+    client, auth_headers, registered_user, session, workbook, monkeypatch
+):
+    """LLM 编造非法题型时回退单选，不 500。"""
+    from workflow import graph as graph_mod
+
+    monkeypatch.setattr(
+        graph_mod, "get_llm", lambda: MockLLM([{"questions": [_choice("1+1=?")]}])
+    )
+    user = _user(session, registered_user)
+    nav = _nav(
+        "generate_questions",
+        {"workbook_id": workbook["id"], "question_type": "essay_x"},
+    )
+
+    result = agent_service.run_task(
+        session,
+        user,
+        "出题",
+        navigator_llm=nav,
+        review_fn=lambda q, p: True,
+        save_fn=_echo_save,
+    )
+    assert result["intent"] == "generate_questions"

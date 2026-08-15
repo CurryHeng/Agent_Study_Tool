@@ -83,6 +83,8 @@ def build_graph(
     if generate_fn is None:
 
         def generate_fn(params):
+            from models.enums import QuestionType
+
             workbook = access.get_visible_workbook(db, user, _require_workbook_id(params))
             knowledge_name = generation_service.resolve_knowledge_name(
                 db, params.get("knowledge_id")
@@ -90,13 +92,28 @@ def build_graph(
             context = rag_service.build_context(
                 db, user, params["workbook_id"], params.get("knowledge_id")
             )
+            # Navigator params 来自 LLM JSON（字符串），统一转为枚举；
+            # 非法值（如 LLM 编造的题型）回退默认单选
+            raw_type = params.get("question_type", "single_choice")
+            try:
+                question_type = QuestionType(raw_type)
+            except ValueError:
+                question_type = QuestionType.single_choice
+            try:
+                count = int(params.get("count", 5))
+            except (TypeError, ValueError):
+                count = 5
+            try:
+                difficulty = int(params.get("difficulty", 1))
+            except (TypeError, ValueError):
+                difficulty = 1
             return generation_service.generate_batch(
                 llm,
                 workbook.name,
                 knowledge_name,
-                params.get("question_type", "single_choice"),
-                params.get("count", 5),
-                params.get("difficulty", 1),
+                question_type,
+                count,
+                difficulty,
                 context,
             )
 
@@ -164,8 +181,13 @@ def build_graph(
         questions = state.get("generated_data", {}).get("questions", [])
         approved = [q for q in questions if review_fn(q, params)]
         saved = save_fn(params, approved)
+        # saved 可能为 QuestionOut 列表（默认 save_fn），统一转 JSON 安全 dict 入 State，
+        # 避免 AgentChatResponse.result / json.dumps 遇到 datetime/枚举序列化失败
+        saved_dicts = [
+            s.model_dump(mode="json") if hasattr(s, "model_dump") else s for s in saved
+        ]
         return {
-            "generated_data": {"approved": saved},
+            "generated_data": {"approved": saved_dicts},
             "review_result": {"total": len(questions), "passed": len(approved)},
             "current_step": "review_agent",
         }
