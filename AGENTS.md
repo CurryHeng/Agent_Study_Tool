@@ -302,6 +302,14 @@ npm test                                 # vitest 单元测试
 
 > 说明：环境使用 `EStudy` conda 环境（Python 3.11），命令中用其 Python；依赖管理用 `requirements.txt`（运行时）+ pytest/ruff（开发）。不引入 uv/poetry/Redis/消息队列等额外组件。
 
+## 9.3 Git 协作规范（强制）
+
+1. **禁止直接推送到 `main` 分支。** 所有改动必须：新建功能分支 → 推送分支 → 发 Pull Request → 合并。
+2. 分支命名：`feat/任务编号-简述`（如 `feat/p0-5-react-agent`）、`fix/简述`、`docs/简述`。
+3. PR 标题写清任务编号（对应 GitHub issue），合并前必须通过：后端 `pytest` + `ruff`、前端 `typecheck` + `build`。
+4. 合并用 **Squash merge**，保持 main 历史线性干净。
+5. 禁止 force-push 到共享分支；`.env`、密钥、数据文件（`backend/data/`）禁止入库。
+
 ## 10. 测试规范（详细设计 §10）
 
 - **单元测试**优先覆盖确定性逻辑：`Parser / Chunker / RAG Retriever / Question Validator / Answer Checker / Permission Checker`。
