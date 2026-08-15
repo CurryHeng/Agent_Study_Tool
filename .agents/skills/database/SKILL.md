@@ -20,7 +20,7 @@ description: EStudy 数据库（SQLite + SQLAlchemy 2.0）开发规范。当定�
 - **Chroma**：向量检索数据（chunk + embedding）。
 - 两者职责分离，Agent 不得直接操作 Chroma（经 RAG service）。
 
-### 2. 目标表结构（docs 详细设计 Pt.2 §5）
+### 2. 目标表结构（详细设计 §6）
 ```
 users, courses, documents, knowledge, mindmaps, questions,
 question_options, answer_records, wrong_questions, agent_tasks

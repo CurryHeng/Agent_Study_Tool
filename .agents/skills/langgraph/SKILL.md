@@ -51,4 +51,4 @@ description: EStudy 的 LangGraph Agent 工作流开发规范。当编写/修改
 - 禁止 `LLM → 任意 SQL / 任意文件操作 / 任意系统命令`。
 
 ### 参考
-- docs：`详细设计Pt.1.md`（Agent 架构/State/协议）、`详细设计Pt.2.md`（工作流）、`详细设计Pt.3.md`（三层校验）。
+- docs：`详细设计.md`（§2-4 Agent/工具/专家、§9 错误处理、§10 测试）。

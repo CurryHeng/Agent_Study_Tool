@@ -46,4 +46,4 @@ Document
 - 文件上传走 `python-multipart`；原始文件存 `data/uploads/`。
 
 ### 参考
-- docs：`详细设计Pt.2.md` §3、`详细设计Pt.1.md` §9/§10。
+- docs：`详细设计.md` §4/§5。

@@ -18,7 +18,7 @@ P0 核心链路：
 资料导入 → 文档解析 → 知识提取 → 思维导图 → RAG → 自动出题 → AI 审题 → 题库 → 刷题 → 错题记录
 ```
 
-统一入口为 **Navigator Agent**（总导航 Agent），负责理解用户意图并调度专业 Agent。
+统一入口为 **助手·导师 Agent**（主 Agent，ReAct 循环），负责理解用户意图、自主调用工具/领域专家完成任务（架构见 §5）。
 
 ## 2. 技术栈
 
@@ -26,10 +26,10 @@ P0 核心链路：
 |---|---|
 | 前端 | **Vue 3 + Vite** |
 | 后端 | **FastAPI（Python）** |
-| Agent 编排 | **LangGraph**（Orchestrator 工作流与状态管理）|
+| Agent 编排 | **LangGraph**（ReAct 循环 + 专家子图工作流与状态管理）|
 | 业务数据库 | **SQLite**（结构化业务数据）|
 | 向量数据库 | **Chroma**（RAG 语义检索）|
-| 文本模型 | **DeepSeek-V4**（文本理解 / 知识提取 / 出题 / 审核 / Navigator）|
+| 文本模型 | **DeepSeek-V4**（文本理解 / 知识提取 / 出题 / 审核 / 主 Agent 对话与工具调用）|
 | 视觉模型 | **千问视觉模型**（图片理解 / OCR / 复杂视觉内容解析）|
 | 认证 | JWT（登录注册，access+refresh 双令牌轮换，已在 FastAPI 实现）|
 
@@ -37,7 +37,7 @@ P0 核心链路：
 
 ## 3. 目录结构
 
-依据详细设计 Pt.2 §9，采用前后端分离结构，P0 已全部实现：
+依据《（必读）详细设计》，采用前后端分离结构，P0 已全部实现：
 
 ```text
 EStudy/
@@ -75,7 +75,47 @@ EStudy/
 ```text
 API → Service → Repository → Database
 
-API → Agent Service → Navigator → Orchestrator → 专业 Agent → Tools/RAG/LLM → Service → Repository
+API → Agent Service → 主 Agent（ReAct）→ 工具/专家子图 → Service → Repository
+```
+
+### 3.1 模块/类关系（现状速查）
+
+**后端 API → Service 映射**（26 条路由）：
+
+```text
+auth.py        → access(密码/JWT) + user/refresh_token repository
+workbooks.py   → workbook_service → workbook_repository
+documents.py   → document_service ─┬→ parsers/(pdf/word/ppt/markdown 工厂)
+                                   ├→ knowledge_service（建知识树）
+                                   ├→ workflow/import_graph.py（LLM 提取，配 key 启用）
+                                   └→ rag_service.index_document（自动索引）
+knowledge.py   → knowledge_service → knowledge_repository
+questions.py   → question_service（CRUD）/ generation_service（出题+审题）
+rag.py         → rag_service.retrieve
+review.py      → review_service ─┬→ grading（判题）
+                                 ├→ fsrs_scheduler（FSRS-6 调度）
+                                 └→ wrong_record_repository（答错记录）
+wrong_records.py → wrong_record_service
+stats.py       → stats_service（聚合，只读）
+agent.py       → agent_service → workflow/graph.py（Agent 主图）
+```
+
+**核心数据模型关系**（12 表，`models/`）：
+
+```text
+User 1──n Workbook 1──n Document / Question / Knowledge（树形 parent_id）
+Question 1──n QuestionOption（正确答案唯一事实源 = Question.answer）
+Question 1──n AnswerRecord / WrongRecord（RESTRICT，历史不可静默丢失）
+Question+User ── ReviewCard（一人一题一卡，FSRS 状态：state/step/stability/difficulty/due）
+User 1──n AgentTask（Agent 任务日志）
+```
+
+**前端结构**：
+
+```text
+views/(11 页面) → api/index.ts（分域 API）→ api/client.ts（fetch+JWT+401刷新）
+stores/auth.ts（Pinia，监听 estudy:auth-invalid 事件同步登出）
+components/ MindMap.vue(markmap) / MarkdownContent.vue / RatingButtons.vue
 ```
 
 ## 4. 核心设计原则（最高优先级）
@@ -85,70 +125,88 @@ API → Agent Service → Navigator → Orchestrator → 专业 Agent → Tools/
 3. **Agent 间通过结构化 State / JSON 传递**，避免依赖自然语言上下文。
 4. **LangGraph 负责工作流与状态管理**。
 5. **RAG 作为公共能力服务**，不单独设计复杂的 RAG Agent。
-6. **Navigator 与 Orchestrator 职责分离**：Navigator 回答“用户想做什么”，Orchestrator 回答“应该怎么完成”，专业 Agent 负责“具体把事情做好”。
-7. **P0 优先，P1/P2 预留接口但不阻塞 P0**。
+6. **决策集中在入口**：只有"助手·导师"主 Agent 做 ReAct 决策；专家内部是固定 Pipeline，步骤/回环上限都是规则而非 LLM 决策。
+7. **写操作必经两阶段确认**（propose→confirm），Agent 永远不能一句话直接改库。
 8. **LLM 输出必须经过结构化解析与校验，不能默认可信**。
 
-## 5. Agent 架构
+## 5. Agent 架构（2026-08-15 重构：supervisor + 专家制）
+
+> 完整论证见 `docs/（必读）Agent架构分析.md`。核心原则：**决策只发生在开放入口，固定流程保持流水线**。
 
 ```text
-用户 → Navigator Agent → Orchestrator（LangGraph）→ Document / Knowledge / Question Agent → Review Agent → 用户
+                        用户
+                          ↓
+        ┌─────────────────────────────────┐
+        │  助手·导师 Agent（主，唯一 ReAct）  │
+        │  开放式对话/任务编排/辅导            │
+        └───────┬─────────┬─────────┬──────┘
+                ↓         ↓         ↓        ← 专家以"工具"形式被调用（LangGraph 子图）
+        ┌──────────┐ ┌──────────┐ ┌──────────┐
+        │ 知识专家  │ │ 出题专家  │ │ 教练专家  │
+        │ 内部Pipeline│ │内部Pipeline│ │Pipeline+跨专家│
+        └──────────┘ └──────────┘ └──────────┘
+                ↓         ↓         ↓
+            解析/RAG    生成→审题    错题/统计/FSRS
+            /导图服务   回环≤2      确定性服务层
 ```
 
-| Agent | 职责 | 不负责 |
-|---|---|---|
-| Navigator Agent | 理解自然语言意图、提供功能指导、生成结构化任务计划 | PDF 解析、出题、审核、数据库操作 |
-| Orchestrator | 任务规划、任务调度、状态控制（LangGraph 实现）| 具体业务执行 |
-| Document Agent | 对已解析文档做内容理解、章节识别 | 原始文件上传/存储 |
-| Knowledge Agent | 知识点提取、知识层级构建、思维导图数据 | — |
-| Question Agent | 根据知识点生成题目 | 审核、入库 |
-| Review Agent | 题目质量审核（正确性/答案/选项/知识点匹配/表述/难度）| 重新生成题目 |
+| Agent | 职责 | 输入 | 输出 | 不负责 |
+|---|---|---|---|---|
+| 助手·导师（主） | 意图理解、任务编排、答疑、辅导、功能指导 | 自然语言+对话历史+workbook+页面上下文 | `reply`+`steps[]`+专家结果 | SQL、出题、审题、诊断 |
+| 知识专家 | 文档语义理解→知识点→层级→导图 | 解析后章节文本 | 知识树+导图数据 | 与用户对话 |
+| 出题专家 | 按主题出题并保质入库 | 主题+题型+数量+难度 | approved 题目+审题报告 | 诊断、调度 |
+| 教练专家 | 错因归因→薄弱诊断→调出题专家出补救题→建议 | 用户 ID+时间范围 | 诊断报告+补救题+建议 | 调度、对话 |
+
+**原 6 组件归宿**：Navigator→助手·导师；Orchestrator→被 ReAct 循环吸收（不再是独立节点）；Document/Knowledge→知识专家内部 Pipeline 节点；Question/Review→出题专家内部 Pipeline 节点。
 
 ## 6. Agent / LangGraph 开发规范
 
-### 6.1 TaskState（统一任务状态）
+### 6.1 主 Agent（ReAct 循环）
 
-所有 Agent 围绕统一 `TaskState` 协作。字段（详细设计 Pt.1 §2.2）：
+- 用 `create_react_agent`（langgraph）实现；`max_iterations=8` 熔断，防工具调用死循环。
+- 请求必须带上下文：`{message, workbook_id, context:{view, selected_knowledge_id, current_question_id}}`，system prompt 明确"这里/这个"优先读 context。
+- 多轮对话通过 messages 状态传递；每轮工具调用记录为 `steps[]` 随响应返回（前端展示执行过程）。
 
-`task_id, user_id, course_id, user_request, intent, task_plan, current_step, document_ids, knowledge_ids, retrieved_context, generated_data, review_result, permission, errors, final_result`
+### 6.2 工具层（workflow/tools.py，读写分级）
 
-### 6.2 State 使用规则（各 Agent 只能读写自己的职责范围）
+- 工具是现有 Service 的**薄封装（≤30 行）**，禁止在工具里写业务逻辑。
+- **工具参数必须带语义引导**（如出题工具的 `topic`），否则 LLM 只能瞎猜（原型已验证）。
+- 三级权限：
 
-- Navigator：读 Request/Knowledge，写 `intent`、`task_plan`
-- Orchestrator：读全部，写 `current_step`、`task_plan`
-- Document Agent：读 `document_ids`，写 `generated_data`
-- Knowledge Agent：读 `generated_data`/RAG，写 `knowledge_ids`、`generated_data`
-- Question Agent：读 knowledge/RAG，写 `generated_data`
-- Review Agent：读 `generated_data`，写 `review_result`
-- RAG Service：读检索参数，写 `retrieved_context`
+| 级别 | 行为 | 工具 |
+|---|---|---|
+| 读 | 直接执行 | search_documents、get_knowledge_tree/detail、get_question(s)、get_stats、get_due、similar_question |
+| 导航 | 返回 UI 指令 | navigate(route)（前端跳转） |
+| 写 | **两阶段确认**（propose→confirm，见 6.3） | generate_questions、import_knowledge、update/add/delete_knowledge_node、update/delete_question、favorite_question、analyze_wrong_reason、create_plan |
 
-### 6.3 工作流
+### 6.3 写操作两阶段确认（替代 LangGraph interrupt）
 
-LangGraph 主流程：`START → Navigator → Orchestrator → Task Router → 专业 Agent → Review → Result Handler → END`。
+1. 写工具只生成 **proposal**（操作提案：动作类型、目标、变更内容、影响说明），不落库；
+2. 响应携带 proposal，前端渲染**通用确认卡片**；
+3. 用户确认 → `POST /api/agent/confirm` 才真正执行；
+4. 取消/超时则丢弃。测试必须覆盖"propose 不落库、confirm 才落库"。
 
-- Review 审核 **FAIL 可循环回 Question Agent 重新生成**，**最大重试 2 次**，仍失败则返回异常（避免无限循环）。
-- 简单咨询类任务（如“什么是题库”）由 Navigator 直接回答，不调用专业 Agent。
+### 6.4 专家内部 Pipeline（保持确定性）
 
-### 6.4 输入输出协议
+- 出题专家：`RAG→生成→三层校验→审题→回环≤2→入库`，回环上限是**规则**，不交 LLM 决策。
+- 知识专家：规则引擎→LLM 抽样交叉验证→校验回环≤2（import_graph 现状保留）。
+- 教练专家：统计聚合（确定性）→LLM 归因→条件分支→可调用出题专家生成补救题。
 
-统一结构化请求/响应（`AgentRequest` / `AgentResponse`），失败带 `error.code / error.message`（如 `LLM_ERROR`）。
+### 6.5 题目结构（出题专家输出）
 
-### 6.5 题目结构（Question Agent 输出）
-
-P0 已实现**五种题型**：`single_choice` / `multiple_choice` / `true_false` / `fill_blank` / `short_answer`（`models/enums.py` 为唯一真相源）。统一字段：`type, content, options[], answer, analysis, knowledge_id, difficulty`。简答题已支持 LLM 判分（LLM 不可用时降级用户自评）。
+已实现**五种题型**：`single_choice` / `multiple_choice` / `true_false` / `fill_blank` / `short_answer`（`models/enums.py` 为唯一真相源）。统一字段：`type, content, options[], answer, analysis, knowledge_id, difficulty`。简答题支持 LLM 判分（LLM 不可用时降级用户自评）。
 
 ### 6.6 LLM 调用规范
 
-- 统一通过 `LLMService` 封装，Agent **不直接调用模型 SDK**，便于换模型不改 Agent。
+- 统一通过 `LLMService` 封装，Agent/工具 **不直接调用模型 SDK**，便于换模型。
 - 长文档先 `Chunk → 检索 → 只把相关内容交给 LLM`，**禁止把整个文档直接塞给 LLM**。
-- 所有重要 Agent 输出必须经过**三层校验**后才入库：
-  1. 格式校验（是否合法 JSON）
-  2. 结构校验（必需字段是否存在）
-  3. 业务校验（如：选项数=4、答案对应选项、`knowledge_id` 有效、`difficulty` 范围正确）
+- 所有重要 LLM 输出必须经过**三层校验**后才入库：格式校验 → 结构校验 → 业务校验（选项数、答案在选项中、`knowledge_id` 有效、`difficulty` 范围）。
 
-### 6.7 权限设计
+### 6.7 权限与安全
 
-Agent 默认 `read + create`；`update` / `delete` / 批量操作需额外授权。禁止 `LLM → 任意 SQL / 任意文件系统操作 / 任意系统命令`。
+- 读工具默认放行；写工具一律走两阶段确认；工具内部权限校验复用 `services/access`。
+- 禁止 `LLM → 任意 SQL / 任意文件系统操作 / 任意系统命令`。
+- Agent 任务日志记录 `task_id / user_id / intent / steps / status / error`（`agent_tasks` 表）。
 
 ## 7. 数据库规范
 
@@ -197,7 +255,7 @@ GET  /api/health
 
 ### 9.1 配置（.env）
 
-配置项由 `config.py` 统一读取，不硬编码 API Key（详细设计 Pt.3 §18）：
+配置项由 `config.py` 统一读取，不硬编码 API Key（详细设计 §11）：
 
 ```text
 DEEPSEEK_API_KEY=  QWEN_API_KEY=  LLM_MODEL=  EMBEDDING_MODEL=
@@ -244,7 +302,7 @@ npm test                                 # vitest 单元测试
 
 > 说明：环境使用 `EStudy` conda 环境（Python 3.11），命令中用其 Python；依赖管理用 `requirements.txt`（运行时）+ pytest/ruff（开发）。不引入 uv/poetry/Redis/消息队列等额外组件。
 
-## 10. 测试规范（详细设计 Pt.3 §20）
+## 10. 测试规范（详细设计 §10）
 
 - **单元测试**优先覆盖确定性逻辑：`Parser / Chunker / RAG Retriever / Question Validator / Answer Checker / Permission Checker`。
 - **Agent 测试**不比较完整字符串，只验证输出结构（如：是否产出 10 道题、题型是否正确、每题是否有答案）。
@@ -296,7 +354,7 @@ cd frontend && npm test
 | P0-5 | RAG / Chroma（chunk + embedding + 检索）| ✅ |
 | P0-6 | AI 出题 + 审题（LLMService + 三层校验）| ✅ |
 | P0-7 | 刷题 + 错题（自动判题 + FSRS-6 + 记录）| ✅ |
-| P0-8 | Navigator + Orchestrator（LangGraph）| ✅ |
+| P0-8 | 主 Agent 基础版（LangGraph 固定路由图，ReAct 升级为 P1）| ✅ |
 | P0-9 | Vue 3 前端迁移 + 前后端联调 | ✅ |
 
 ### 13.2 测试结果（当前基线）

@@ -29,10 +29,10 @@ description: EStudy 的 RAG（Chroma）开发规范。当编写/修改 chunker�
 
 ### 4. RAG 定位
 - RAG 是**公共能力服务**，不单独设计复杂 RAG Agent。
-- 主要用途：为 Question Agent 提供课程资料上下文（docs 详细设计 Pt.1 §12）。
+- 主要用途：为 Question Agent 提供课程资料上下文（详细设计 §5）。
 
 ### 5. Embedding 决策
 - P0 先用 Chroma 本地 embedding（免 key），链路通后可按需切千问 text-embedding（需 QWEN key，`.env` 配置 `EMBEDDING_MODEL`）。
 
 ### 参考
-- docs：`详细设计Pt.1.md` §12、`详细设计Pt.2.md` §4。
+- docs：`详细设计.md` §5。
