@@ -219,3 +219,15 @@ export interface AgentConfirmResponse {
   ok: boolean
   result?: Record<string, unknown> | null
 }
+
+// ── AI 供应商设置（设置页） ─────────────────────────────
+export interface AiProviderConfig {
+  provider: string
+  api_key?: string
+  model?: string
+}
+
+export interface AiSettings {
+  text: AiProviderConfig
+  multimodal: AiProviderConfig
+}

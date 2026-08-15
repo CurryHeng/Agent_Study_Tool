@@ -12,6 +12,7 @@ from api.knowledge import router as knowledge_router
 from api.questions import router as questions_router
 from api.rag import router as rag_router
 from api.review import router as review_router
+from api.settings import router as settings_router
 from api.stats import router as stats_router
 from api.workbooks import router as workbooks_router
 from api.wrong_records import router as wrong_records_router
@@ -37,6 +38,7 @@ app.include_router(review_router)
 app.include_router(agent_router)
 app.include_router(wrong_records_router)
 app.include_router(stats_router)
+app.include_router(settings_router)
 
 
 @app.exception_handler(AccessError)

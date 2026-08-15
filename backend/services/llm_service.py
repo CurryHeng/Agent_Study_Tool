@@ -6,7 +6,7 @@
 import json
 import re
 
-from config import settings
+from services import ai_settings
 from services.access import AccessError
 
 
@@ -33,17 +33,23 @@ def extract_json(text: str) -> dict:
 
 class LLMService:
     def __init__(self, model: str | None = None, api_key: str | None = None):
-        self._model = model or settings.llm_model
-        self._api_key = api_key or settings.deepseek_api_key
+        cfg = ai_settings.get_text_config()
+        self._model = model or cfg["model"]
+        self._api_key = api_key or cfg["api_key"]
+        self._base_url = cfg["base_url"]
         self._chat = None
 
     def _get_chat(self):
         if not self._api_key:
             raise LLMNotConfiguredError()
         if self._chat is None:
-            from langchain_deepseek import ChatDeepSeek
+            from langchain_openai import ChatOpenAI
 
-            self._chat = ChatDeepSeek(model=self._model, api_key=self._api_key)
+            self._chat = ChatOpenAI(
+                model=self._model,
+                api_key=self._api_key,
+                base_url=self._base_url,
+            )
         return self._chat
 
     def generate(self, system: str, user: str) -> str:

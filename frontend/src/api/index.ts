@@ -3,6 +3,7 @@ import type {
   AgentChatContext,
   AgentChatResponse,
   AgentConfirmResponse,
+  AiSettings,
   AnswerResult,
   Document,
   DocumentDetail,
@@ -102,6 +103,12 @@ export const documentApi = {
 // ── 学习统计 ────────────────────────────────────────────
 export const statsApi = {
   get: () => api.get<Stats>('/stats'),
+}
+
+// ── AI 供应商设置 ────────────────────────────────────────
+export const settingsApi = {
+  getAi: () => api.get<AiSettings>('/settings/ai'),
+  updateAi: (payload: AiSettings) => api.put<AiSettings>('/settings/ai', payload),
 }
 
 // ── AI 助手 ─────────────────────────────────────────────

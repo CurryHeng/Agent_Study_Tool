@@ -17,8 +17,8 @@ import {
 } from 'lucide-vue-next'
 import { useAuthStore } from '../stores/auth'
 import { useDarkMode } from '../lib/darkMode'
-import { workbookApi } from '../api'
-import type { Workbook } from '../types'
+import { settingsApi, workbookApi } from '../api'
+import type { AiSettings, Workbook } from '../types'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -31,6 +31,26 @@ const showNewWb = ref(false)
 const newWbName = ref('')
 const newWbDesc = ref('')
 const message = ref<string | null>(null)
+
+const TEXT_PROVIDERS = [
+  { value: 'deepseek', label: 'DeepSeek' },
+  { value: 'openai', label: 'OpenAI' },
+  { value: 'qwen', label: '通义千问' },
+  { value: 'gemini', label: 'Google Gemini' },
+  { value: 'ollama', label: 'Ollama（本地）' },
+]
+const MULTIMODAL_PROVIDERS = [
+  { value: 'qwen', label: '通义千问' },
+  { value: 'openai', label: 'OpenAI' },
+  { value: 'gemini', label: 'Google Gemini' },
+  { value: 'ollama', label: 'Ollama（本地）' },
+]
+
+const aiSettings = ref<AiSettings>({
+  text: { provider: 'deepseek', api_key: '', model: 'deepseek-chat' },
+  multimodal: { provider: 'qwen', api_key: '', model: 'qwen-vl-plus' },
+})
+const aiSaving = ref(false)
 
 function showMsg(msg: string) {
   message.value = msg
@@ -71,9 +91,30 @@ async function createWorkbook() {
   await loadWorkbooks()
 }
 
+async function loadAiSettings() {
+  try {
+    aiSettings.value = await settingsApi.getAi()
+  } catch {
+    // 后端不支持时保持默认
+  }
+}
+
+async function saveAiSettings() {
+  aiSaving.value = true
+  try {
+    await settingsApi.updateAi(aiSettings.value)
+    showMsg('AI 配置已保存')
+  } catch (e) {
+    showMsg(`保存失败：${e instanceof Error ? e.message : '未知错误'}`)
+  } finally {
+    aiSaving.value = false
+  }
+}
+
 onMounted(() => {
   refresh()
   loadWorkbooks()
+  loadAiSettings()
 })
 </script>
 
@@ -184,19 +225,71 @@ onMounted(() => {
       </div>
     </section>
 
-    <!-- AI 配置 -->
+    <!-- AI 供应商配置 -->
     <section class="card">
       <h3 class="mb-2 flex items-center gap-2 font-semibold text-slate-800 dark:text-white">
         <Sparkles :size="16" class="text-violet-500" />
         AI 功能配置
       </h3>
       <p class="text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-        AI 出题与 AI 助手使用服务端 DeepSeek 密钥（在
-        <code class="rounded bg-slate-100 px-1 dark:bg-slate-800">backend/.env</code>
-        中配置
-        <code class="rounded bg-slate-100 px-1 dark:bg-slate-800">DEEPSEEK_API_KEY</code>）。
-        若未配置，AI 相关功能会返回错误。
+        配置文本 LLM 与多模态视觉 API，支持常见供应商。保存后后端即时生效。
       </p>
+
+      <!-- 文本 API -->
+      <div class="mt-4 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+        <h4 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+          文本 API
+          <span class="ml-1 text-xs font-normal text-slate-400">出题 / AI 助手 / 知识提取</span>
+        </h4>
+        <div class="grid gap-3 sm:grid-cols-3">
+          <div>
+            <label class="label">供应商</label>
+            <select v-model="aiSettings.text.provider" class="input">
+              <option v-for="p in TEXT_PROVIDERS" :key="p.value" :value="p.value">{{ p.label }}</option>
+            </select>
+          </div>
+          <div>
+            <label class="label">API Key</label>
+            <input v-model="aiSettings.text.api_key" type="password" class="input" placeholder="sk-..." autocomplete="off" />
+          </div>
+          <div>
+            <label class="label">模型</label>
+            <input v-model="aiSettings.text.model" class="input" placeholder="deepseek-chat / gpt-4o-mini / qwen-plus" />
+          </div>
+        </div>
+      </div>
+
+      <!-- 多模态 API -->
+      <div class="mt-4 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+        <h4 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+          多模态 API
+          <span class="ml-1 text-xs font-normal text-slate-400">图片导入 OCR</span>
+        </h4>
+        <div class="grid gap-3 sm:grid-cols-3">
+          <div>
+            <label class="label">供应商</label>
+            <select v-model="aiSettings.multimodal.provider" class="input">
+              <option v-for="p in MULTIMODAL_PROVIDERS" :key="p.value" :value="p.value">{{ p.label }}</option>
+            </select>
+          </div>
+          <div>
+            <label class="label">API Key</label>
+            <input v-model="aiSettings.multimodal.api_key" type="password" class="input" placeholder="sk-..." autocomplete="off" />
+          </div>
+          <div>
+            <label class="label">模型</label>
+            <input v-model="aiSettings.multimodal.model" class="input" placeholder="qwen-vl-plus / gpt-4o / gemini-1.5-flash" />
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 flex justify-end gap-2">
+        <button class="btn-secondary !py-1.5 text-xs" @click="loadAiSettings" :disabled="aiSaving">恢复默认</button>
+        <button class="btn-primary !py-1.5 text-xs" :disabled="aiSaving" @click="saveAiSettings">
+          <RefreshCw v-if="aiSaving" :size="13" class="animate-spin" />
+          {{ aiSaving ? '保存中…' : '保存 AI 配置' }}
+        </button>
+      </div>
     </section>
 
     <!-- 关于 -->

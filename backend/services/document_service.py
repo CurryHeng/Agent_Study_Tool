@@ -11,7 +11,7 @@ from models.enums import DocumentStatus
 from parsers.factory import detect_type, parse_file
 from repositories import document_repository
 from schemas.document import DocumentDetailOut, DocumentOut, SectionOut
-from services import access, knowledge_service
+from services import access, ai_settings, knowledge_service
 
 
 def _upload_dir() -> Path:
@@ -100,9 +100,11 @@ def upload_document(
 
     file_type = detect_type(filename)
     if file_type is None:
-        raise access.AccessError(422, "不支持的文件格式（支持 PDF/Markdown/Word/PPT）")
+        raise access.AccessError(422, "不支持的文件格式（支持 PDF/Markdown/Word/PPT/图片）")
     if file_type == "image":
-        raise access.AccessError(501, "图片解析（视觉 Agent）暂未实现")
+        mm_cfg = ai_settings.get_multimodal_config()
+        if not mm_cfg["api_key"] and mm_cfg["provider"] != "ollama":
+            raise access.AccessError(503, "多模态 API 未配置，请先在设置页配置")
     if len(content) > settings.max_file_size:
         raise access.AccessError(413, "文件过大")
 

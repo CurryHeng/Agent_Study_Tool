@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     # ── LLM（后续阶段使用）──
     deepseek_api_key: str = ""
     qwen_api_key: str = ""
+    qwen_vl_model: str = "qwen-vl-plus"
     llm_model: str = "deepseek-chat"
     embedding_model: str = "chroma-default"  # chroma-default = 本地 ONNX MiniLM（免 key）
 

@@ -40,3 +40,7 @@ __pycache__/
 # Obsidian 个人配置
 .obsidian/
 docs/.obsidian/
+
+# Playwright
+frontend/test-results/
+frontend/playwright-report/

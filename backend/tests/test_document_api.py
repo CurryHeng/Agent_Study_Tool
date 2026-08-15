@@ -84,14 +84,14 @@ def test_upload_unsupported_type(client, auth_headers, workbook):
     assert resp.status_code == 422
 
 
-def test_upload_image_not_implemented(client, auth_headers, workbook):
+def test_upload_image_requires_multimodal_key(client, auth_headers, workbook):
     resp = client.post(
         "/api/documents/upload",
         data={"workbook_id": str(workbook["id"])},
         files={"file": ("x.png", b"\x89PNGfake", "image/png")},
         headers=auth_headers,
     )
-    assert resp.status_code == 501
+    assert resp.status_code == 503
 
 
 def test_upload_to_system_workbook_forbidden(client, auth_headers):
