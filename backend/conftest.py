@@ -59,6 +59,15 @@ def _isolate_rag(monkeypatch, tmp_path):
     monkeypatch.setattr(embedding, "get_embedder", lambda: FakeEmbedder())
 
 
+@pytest.fixture(autouse=True)
+def _isolate_llm(monkeypatch):
+    """全局隔离 LLM：清空 .env 中的真实 key，测试一律走确定性路径（不调真实模型）。"""
+    from config import settings
+
+    monkeypatch.setattr(settings, "deepseek_api_key", "")
+    monkeypatch.setattr(settings, "qwen_api_key", "")
+
+
 @pytest.fixture()
 def engine(tmp_path):
     db_file = tmp_path / "test.db"

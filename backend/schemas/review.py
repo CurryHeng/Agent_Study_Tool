@@ -1,5 +1,5 @@
 """刷题 / 答题 Pydantic 模型。"""
-from datetime import date
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -22,11 +22,14 @@ class ReviewCardOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     question_id: int
-    ease: float
-    interval: int
-    repetitions: int
-    next_review: date
-    last_review: date | None
+    # FSRS-6 调度状态
+    state: str
+    step: int | None
+    stability: float | None
+    difficulty: float | None
+    due: datetime
+    last_review: datetime | None
+    # 业务统计
     total_attempts: int
     total_correct: int
     favorited: int

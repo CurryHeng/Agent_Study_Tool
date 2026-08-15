@@ -33,7 +33,7 @@ P0 核心链路：
 | 视觉模型 | **千问视觉模型**（图片理解 / OCR / 复杂视觉内容解析）|
 | 认证 | JWT（登录注册，access+refresh 双令牌轮换，已在 FastAPI 实现）|
 
-> 注意：旧 React/Express 代码已删除（2026-08-14），业务逻辑（SM-2、错题归纳、题库结构）均已移植到 FastAPI 后端。架构以 Vue + FastAPI + LangGraph 为准，不得回退。
+> 注意：旧 React/Express 代码已删除（2026-08-14），业务逻辑（间隔重复、错题归纳、题库结构）均已移植到 FastAPI 后端。架构以 Vue + FastAPI + LangGraph 为准，不得回退。
 
 ## 3. 目录结构
 
@@ -57,7 +57,7 @@ EStudy/
 │   ├── db/                      # base.py(DeclarativeBase) / engine.py / session.py
 │   ├── models/                  # 12 个 SQLAlchemy 模型 + enums.py（唯一真相源）
 │   ├── repositories/            # 数据访问层
-│   ├── services/                # 业务层（sm2/chapter_sort/grading/llm_service/generation/rag/review/...）
+│   ├── services/                # 业务层（fsrs_scheduler/chapter_sort/grading/llm_service/generation/rag/review/...）
 │   ├── schemas/                 # Pydantic 请求/响应模型
 │   ├── api/                     # auth/workbooks/questions/knowledge/documents/rag/review/agent/wrong_records
 │   ├── workflow/                # LangGraph：state.py(TaskState) + graph.py
@@ -295,13 +295,13 @@ cd frontend && npm test
 | P0-4 | 文档解析 + 知识提取 + 思维导图 | ✅ |
 | P0-5 | RAG / Chroma（chunk + embedding + 检索）| ✅ |
 | P0-6 | AI 出题 + 审题（LLMService + 三层校验）| ✅ |
-| P0-7 | 刷题 + 错题（自动判题 + SM-2 + 记录）| ✅ |
+| P0-7 | 刷题 + 错题（自动判题 + FSRS-6 + 记录）| ✅ |
 | P0-8 | Navigator + Orchestrator（LangGraph）| ✅ |
 | P0-9 | Vue 3 前端迁移 + 前后端联调 | ✅ |
 
 ### 13.2 测试结果（当前基线）
 
-- **后端**：`169` 个测试全部通过（含核心闭环集成测试 `test_integration.py` 与上传自动索引测试），`ruff check` 全绿。
+- **后端**：`164` 个测试全部通过（含核心闭环集成测试 `test_integration.py`、上传自动索引测试、FSRS 行为测试 `test_fsrs.py`），`ruff check` 全绿。
 - **前端**：`10` 个单元测试通过，`vue-tsc` 类型检查与 `vite build` 均成功。
 - **联调**：后端 `/api/health` 正常、前端页面 200、Vite 代理 `/api` → 后端 8080 转发成功。
 

@@ -43,8 +43,9 @@ def get_stats(db: Session, user: User) -> dict:
         .all()
     )
     cards_total = len(cards)
-    cards_due = sum(1 for c in cards if c.next_review <= today)
-    reviewed_today = sum(1 for c in cards if c.last_review == today)
+    now = datetime.now(UTC).replace(tzinfo=None)
+    cards_due = sum(1 for c in cards if c.due <= now)
+    reviewed_today = sum(1 for c in cards if c.last_review and c.last_review.date() == today)
     favorites = sum(1 for c in cards if c.favorited)
 
     # ── 答题记录 ──

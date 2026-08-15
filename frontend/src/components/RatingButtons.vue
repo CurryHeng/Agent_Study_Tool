@@ -12,18 +12,19 @@ const ratings = [
   { key: 'easy', label: '简单', desc: '非常轻松', color: 'bg-blue-500 hover:bg-blue-600', shortcut: '4' },
 ]
 
-function nextLabel(next: string | null | undefined): string {
-  if (!next) return '——'
-  const d = new Date(next)
+function nextLabel(due: string | null | undefined): string {
+  if (!due) return '——'
+  // FSRS due 为 naive UTC datetime，补 Z 再解析为本地时间
+  const d = new Date(/Z|[+-]\d{2}:?\d{2}$/.test(due) ? due : due.replace(' ', 'T') + 'Z')
   if (Number.isNaN(d.getTime())) return '——'
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const diff = Math.round((d.getTime() - today.getTime()) / 86400000)
-  if (diff <= 0) return '今天'
-  if (diff === 1) return '明天'
-  if (diff < 7) return `${diff} 天后`
-  if (diff < 30) return `${Math.round(diff / 7)} 周后`
-  return `${Math.round(diff / 30)} 月后`
+  const diffSec = (d.getTime() - Date.now()) / 1000
+  if (diffSec <= 0) return '现在'
+  if (diffSec < 3600) return `${Math.max(1, Math.round(diffSec / 60))} 分钟后`
+  if (diffSec < 86400) return `${Math.round(diffSec / 3600)} 小时后`
+  const days = Math.round(diffSec / 86400)
+  if (days < 7) return `${days} 天后`
+  if (days < 30) return `${Math.round(days / 7)} 周后`
+  return `${Math.round(days / 30)} 月后`
 }
 </script>
 

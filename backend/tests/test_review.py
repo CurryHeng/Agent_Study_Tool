@@ -174,7 +174,7 @@ def test_answer_correct_flow(client, auth_headers, session, workbook):
     data = resp.json()
     assert data["is_correct"] is True
     assert data["rating"] == "good"
-    assert data["card"]["repetitions"] == 1
+    assert data["card"]["state"] in ("Learning", "Review")  # FSRS 状态
     assert data["card"]["total_correct"] == 1
 
     records = session.query(AnswerRecord).filter(AnswerRecord.question_id == q["id"]).all()
@@ -199,7 +199,7 @@ def test_answer_wrong_creates_wrong_record(client, auth_headers, session, workbo
     assert wrong[0].wrong_answer == "A"
 
 
-def test_answer_updates_sm2_card(client, auth_headers, session, workbook):
+def test_answer_updates_fsrs_card(client, auth_headers, session, workbook):
     q = _create_choice(client, auth_headers, workbook)
     client.post(f"/api/questions/{q['id']}/answer", json={"user_answer": "B"}, headers=auth_headers)
     client.post(f"/api/questions/{q['id']}/answer", json={"user_answer": "A"}, headers=auth_headers)
@@ -207,7 +207,7 @@ def test_answer_updates_sm2_card(client, auth_headers, session, workbook):
     card = session.query(ReviewCard).filter(ReviewCard.question_id == q["id"]).first()
     assert card.total_attempts == 2
     assert card.total_correct == 1  # 第一次正确，第二次错误
-    assert card.repetitions == 0  # again 重置 repetitions
+    assert card.state in ("Learning", "Relearning")  # FSRS: 答错回到学习态
 
 
 def test_strict_mode_forces_auto_rating(client, auth_headers, workbook):

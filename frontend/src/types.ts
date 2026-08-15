@@ -52,11 +52,14 @@ export interface Question {
 
 export interface ReviewCard {
   question_id: number
-  ease: number
-  interval: number
-  repetitions: number
-  next_review: string
+  // FSRS-6 调度状态
+  state: string
+  step: number | null
+  stability: number | null
+  difficulty: number | null
+  due: string
   last_review: string | null
+  // 业务统计
   total_attempts: number
   total_correct: number
   favorited: number

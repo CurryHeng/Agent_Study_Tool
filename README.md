@@ -30,7 +30,7 @@ agent-quiz/
 │   ├── config.py               # pydantic-settings，统一从 .env 读取
 │   ├── api/                    # 12 个 Router：auth/workbooks/questions/knowledge/
 │   │                           #   documents/rag/review/agent/wrong_records/stats
-│   ├── services/               # 业务层：access(权限)/grading(判题)/sm2/generation/
+│   ├── services/               # 业务层：access(权限)/grading(判题)/fsrs_scheduler/generation/
 │   │                           #   rag/stats/structure_extract(规则引擎)/
 │   │                           #   knowledge_extract(抽样交叉验证) 等
 │   ├── repositories/           # 数据访问层（纯 CRUD）
@@ -113,7 +113,7 @@ cd frontend && npm test && npm run build
 - **资料导入**：PDF / Word / PPT / Markdown / TXT / HTML（≤10MB）；图片解析后置
 - **导入 Agent**：规则引擎 + LLM 抽样交叉验证提取知识点；无章节文档由 Document Agent 做 LLM 章节理解；三层校验 + 失败回环
 - **AI 出题/审题**：按练习册/知识点/题型/数量生成，Review Agent 审核，FAIL 回环重试
-- **刷题**：宽松/普通/严格三模式，选择/判断/填空自动判题，简答题 LLM 判分（未配 key 降级为自评），SM-2 间隔重复
+- **刷题**：宽松/普通/严格三模式，选择/判断/填空自动判题，简答题 LLM 判分（未配 key 降级为自评），FSRS-6 间隔重复
 - **错题本**：答错自动收集，错因编辑/筛选/收藏
 - **统计**：掌握度分布、知识点热力图、错因分类、本周学习时长
 - **思维导图**：知识树 markmap 可视化

@@ -1,5 +1,5 @@
 """数据模型约束 / 外键删除行为 / 软删除 测试。"""
-from datetime import UTC, date
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -15,6 +15,10 @@ from models import (
     WrongRecord,
 )
 from models.enums import QuestionSource, QuestionStatus, QuestionType
+
+
+def _now():
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def _mk_user(session, username="alice", email="alice@example.com"):
@@ -75,7 +79,7 @@ def test_review_card_cascade_on_question_delete(session):
     u = _mk_user(session)
     wb = _mk_workbook(session, u)
     q = _mk_question(session, wb)
-    session.add(ReviewCard(question_id=q.id, user_id=u.id, next_review=date.today()))
+    session.add(ReviewCard(question_id=q.id, user_id=u.id, due=_now()))
     session.flush()
 
     session.delete(q)
@@ -166,8 +170,7 @@ def test_soft_delete_hides_question_from_query(session):
     wb = _mk_workbook(session, u)
     q = _mk_question(session, wb)
 
-    from datetime import datetime
-
+    
     q.deleted_at = datetime.now(UTC)
     session.flush()
 
@@ -180,11 +183,11 @@ def test_review_card_composite_pk_unique(session):
     u = _mk_user(session)
     wb = _mk_workbook(session, u)
     q = _mk_question(session, wb)
-    session.add(ReviewCard(question_id=q.id, user_id=u.id, next_review=date.today()))
+    session.add(ReviewCard(question_id=q.id, user_id=u.id, due=_now()))
     session.flush()
 
     with pytest.raises(IntegrityError):
-        session.add(ReviewCard(question_id=q.id, user_id=u.id, next_review=date.today()))
+        session.add(ReviewCard(question_id=q.id, user_id=u.id, due=_now()))
         session.flush()
 
 

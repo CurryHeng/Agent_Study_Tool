@@ -1,5 +1,5 @@
-"""刷题业务逻辑：答题 → 判题 → 记录 → SM-2 更新。"""
-from datetime import date
+"""刷题业务逻辑：答题 → 判题 → 记录 → FSRS 更新。"""
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -15,8 +15,7 @@ from repositories import (
 )
 from schemas.question import to_question_out
 from schemas.review import AnswerRequest, AnswerResponse, DueItem, ReviewCardOut
-from services import access, grading
-from services.sm2 import ReviewCardState, review_card
+from services import access, fsrs_scheduler, grading
 
 
 def _derive_rating(mode: str, requested: str | None, is_correct: bool | None) -> str:
@@ -61,19 +60,11 @@ def answer_question(
             db, user.id, question_id, request.user_answer, request.wrong_reason
         )
 
-    # 3. SM-2 复习卡更新
+    # 3. FSRS 复习卡更新
     card = review_card_repository.get_or_create(db, question_id, user.id)
-    state = ReviewCardState(
-        ease=card.ease,
-        interval=card.interval,
-        repetitions=card.repetitions,
-        total_attempts=card.total_attempts,
-        total_correct=card.total_correct,
-        next_review=card.next_review,
-        last_review=card.last_review,
-    )
-    new_state = review_card(state, rating, is_correct)
-    review_card_repository.apply_sm2(db, card, new_state)
+    card.total_attempts += 1
+    card.total_correct += 1 if is_correct else 0
+    fsrs_scheduler.apply_review(card, rating)
 
     return AnswerResponse(
         is_correct=is_correct,
@@ -109,7 +100,7 @@ def get_due(db: Session, user: User, limit: int = 20, favorites: bool = False) -
             if node is not None:
                 knowledge_map[q.knowledge_id] = node.name
 
-    today = date.today()
+    now = datetime.now(UTC).replace(tzinfo=None)
     items: list[tuple] = []  # (question, card)
     new_questions: list = []  # 尚无复习卡的新题
     for q in questions:
@@ -119,7 +110,7 @@ def get_due(db: Session, user: User, limit: int = 20, favorites: bool = False) -
         elif favorites:
             if card.favorited:
                 items.append((q, card))
-        elif card.next_review <= today:
+        elif card.due <= now:
             items.append((q, card))
 
     # 仅为限额内的新题建卡（favorites 模式下新题无收藏，跳过）
@@ -137,7 +128,7 @@ def get_due(db: Session, user: User, limit: int = 20, favorites: bool = False) -
         )
         for q, card in items
     ]
-    due.sort(key=lambda item: item.card.next_review)
+    due.sort(key=lambda item: item.card.due)
     return due[:limit]
 
 

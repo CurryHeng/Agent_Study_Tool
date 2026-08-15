@@ -1,10 +1,9 @@
-"""SM-2 复习卡数据访问层。"""
-from datetime import date
+"""FSRS 复习卡数据访问层。"""
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
 from models import ReviewCard
-from services.sm2 import ReviewCardState
 
 
 def get_by_question_user(db: Session, question_id: int, user_id: int) -> ReviewCard | None:
@@ -26,7 +25,7 @@ def create(db: Session, question_id: int, user_id: int) -> ReviewCard:
     card = ReviewCard(
         question_id=question_id,
         user_id=user_id,
-        next_review=date.today(),
+        due=datetime.now(UTC).replace(tzinfo=None),
     )
     db.add(card)
     db.flush()
@@ -36,15 +35,3 @@ def create(db: Session, question_id: int, user_id: int) -> ReviewCard:
 def get_or_create(db: Session, question_id: int, user_id: int) -> ReviewCard:
     card = get_by_question_user(db, question_id, user_id)
     return card if card is not None else create(db, question_id, user_id)
-
-
-def apply_sm2(db: Session, card: ReviewCard, state: ReviewCardState) -> ReviewCard:
-    card.ease = state.ease
-    card.interval = state.interval
-    card.repetitions = state.repetitions
-    card.next_review = state.next_review
-    card.last_review = state.last_review
-    card.total_attempts = state.total_attempts
-    card.total_correct = state.total_correct
-    db.flush()
-    return card

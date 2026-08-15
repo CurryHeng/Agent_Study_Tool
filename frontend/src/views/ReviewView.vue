@@ -480,7 +480,7 @@ onBeforeUnmount(stopTimer)
 
       <!-- 评分（宽松/普通，未提交时） -->
       <div v-if="canRate && !rated" class="card">
-        <RatingButtons :allowed="allowedRatings" :next-review="current.card.next_review" @rate="onRate" />
+        <RatingButtons :allowed="allowedRatings" :next-review="current.card.due" @rate="onRate" />
       </div>
 
       <!-- 错因表单（选了 again/hard） -->
