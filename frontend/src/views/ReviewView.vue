@@ -58,7 +58,26 @@ const remaining = ref(300)
 let timer: ReturnType<typeof setInterval> | null = null
 
 const SESSION_KEY = 'studyforge-quiz-session-last'
-const resume = ref<{ mode: Mode; index: number; total: number } | null>(null)
+
+interface SessionSnapshot {
+  mode: Mode
+  index: number
+  total: number
+  results: (boolean | null)[]
+  current: {
+    selected: string | null
+    textAnswer: string
+    revealed: boolean
+    selfAssessed: boolean | null
+    pendingRating: string | null
+    result: AnswerResult | null
+    wrongReasonInput: string
+    wrongAnswerInput: string
+    remaining: number
+  } | null
+}
+
+const resume = ref<SessionSnapshot | null>(null)
 
 const current = computed(() => due.value[index.value])
 const isChoice = computed(() => (current.value?.question.options.length ?? 0) > 0)
@@ -104,7 +123,24 @@ const rate = computed(() =>
 
 function saveSession() {
   if (!started.value || finished.value) return
-  localStorage.setItem(SESSION_KEY, JSON.stringify({ mode: mode.value, index: index.value, total: due.value.length }))
+  const snapshot: SessionSnapshot = {
+    mode: mode.value,
+    index: index.value,
+    total: due.value.length,
+    results: [...results.value],
+    current: {
+      selected: selected.value,
+      textAnswer: textAnswer.value,
+      revealed: revealed.value,
+      selfAssessed: selfAssessed.value,
+      pendingRating: pendingRating.value,
+      result: result.value,
+      wrongReasonInput: wrongReasonInput.value,
+      wrongAnswerInput: wrongAnswerInput.value,
+      remaining: remaining.value,
+    },
+  }
+  localStorage.setItem(SESSION_KEY, JSON.stringify(snapshot))
 }
 
 async function start() {
@@ -119,13 +155,38 @@ async function start() {
     loading.value = false
   }
   started.value = true
-  if (resume.value && resume.value.mode === mode.value && resume.value.index > 0 && resume.value.index < due.value.length) {
+
+  if (
+    resume.value &&
+    resume.value.mode === mode.value &&
+    resume.value.index >= 0 &&
+    resume.value.index < due.value.length
+  ) {
     index.value = resume.value.index
+    results.value = resume.value.results && resume.value.results.length === due.value.length
+      ? [...resume.value.results]
+      : new Array(due.value.length).fill(null)
+    const cur = resume.value.current
+    if (cur) {
+      selected.value = cur.selected
+      textAnswer.value = cur.textAnswer ?? ''
+      revealed.value = cur.revealed ?? false
+      selfAssessed.value = cur.selfAssessed ?? null
+      pendingRating.value = cur.pendingRating ?? null
+      result.value = cur.result ?? null
+      wrongReasonInput.value = cur.wrongReasonInput ?? ''
+      wrongAnswerInput.value = cur.wrongAnswerInput ?? ''
+      remaining.value = cur.remaining ?? 300
+      startTimer()
+    } else {
+      resetCard()
+    }
     resume.value = null
+  } else {
+    localStorage.removeItem(SESSION_KEY)
+    results.value = new Array(due.value.length).fill(null)
+    resetCard()
   }
-  localStorage.removeItem(SESSION_KEY)
-  results.value = new Array(due.value.length).fill(null)
-  resetCard()
   saveSession()
 }
 
@@ -142,9 +203,16 @@ function discardResume() {
 function checkResume() {
   try {
     const raw = localStorage.getItem(SESSION_KEY)
-    if (raw) {
-      const s = JSON.parse(raw)
-      if (s.mode && typeof s.index === 'number') resume.value = s
+    if (!raw) return
+    const s = JSON.parse(raw)
+    if (
+      s &&
+      (s.mode === 'relaxed' || s.mode === 'normal' || s.mode === 'strict') &&
+      typeof s.index === 'number' &&
+      typeof s.total === 'number' &&
+      Array.isArray(s.results)
+    ) {
+      resume.value = s as SessionSnapshot
     }
   } catch {
     resume.value = null
@@ -251,6 +319,26 @@ function restart() {
 }
 
 watch(mode, () => resetCard())
+watch(
+  () => [
+    mode.value,
+    index.value,
+    started.value,
+    finished.value,
+    selected.value,
+    textAnswer.value,
+    revealed.value,
+    selfAssessed.value,
+    pendingRating.value,
+    result.value,
+    wrongReasonInput.value,
+    wrongAnswerInput.value,
+    remaining.value,
+    [...results.value],
+  ],
+  saveSession,
+  { deep: true },
+)
 onMounted(checkResume)
 onBeforeUnmount(stopTimer)
 </script>
