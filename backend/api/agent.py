@@ -5,8 +5,13 @@ from sqlalchemy.orm import Session
 from api.deps import get_current_user
 from db.session import get_db
 from models import User
-from schemas.agent import AgentChatRequest, AgentChatResponse
-from services import agent_service
+from schemas.agent import (
+    AgentChatRequest,
+    AgentChatResponse,
+    AgentConfirmRequest,
+    AgentConfirmResponse,
+)
+from services import agent_service, proposal_service
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
 
@@ -20,3 +25,14 @@ def chat(
     result = agent_service.run_task(db, user, body.message, body.workbook_id)
     db.commit()
     return AgentChatResponse(**result)
+
+
+@router.post("/confirm", response_model=AgentConfirmResponse)
+def confirm(
+    body: AgentConfirmRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    result = proposal_service.confirm(db, user, body.proposal_id, body.approved)
+    db.commit()
+    return AgentConfirmResponse(result=result)

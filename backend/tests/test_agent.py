@@ -5,7 +5,7 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from pydantic import ValidationError
 
-from models import AgentTask, User
+from models import AgentTask, Knowledge, Question, User
 from models.enums import AgentTaskStatus
 from schemas.generation import GeneratedQuestion, ReviewResult
 from services import agent_service, generation_service
@@ -105,14 +105,22 @@ def test_generate_step_has_structured_summary(session, registered_user):
             "id": "generate", "type": "tool_call",
         }]),
         ToolMessage(
-            content='{"preview": [{"content": "题目"}], "approved": 10, "saved": false}',
+            content=json.dumps({
+                "proposal_id": "proposal-1",
+                "action": "generate_questions",
+                "target": {"workbook_id": 1},
+                "changes": {"before": None, "after": {"questions": []}},
+                "impact": "向题库新增 10 道审核通过的题目",
+                "expires_in_sec": 600,
+            }, ensure_ascii=False),
             tool_call_id="generate",
             name="generate_questions",
         ),
         AIMessage(content="已生成预览。"),
     ]
     result = agent_service.run_task(session, user, "出 10 道题", graph=FakeGraph(messages))
-    assert result["steps"][0]["summary"] == "生成并审核通过 10 道题；未保存"
+    assert result["steps"][0]["summary"] == "向题库新增 10 道审核通过的题目"
+    assert result["proposals"][0]["proposal_id"] == "proposal-1"
 
 
 def test_agent_task_records_structured_result(session, registered_user):
@@ -172,7 +180,9 @@ def test_tools_include_read_layer_and_enforce_permissions(session, registered_us
     user = _user(session, registered_user)
     tools = {tool.name: tool for tool in build_tools(session, user, object())}
     assert {"search_documents", "get_knowledge_tree", "get_knowledge_detail",
-            "list_documents", "get_questions", "generate_questions"} <= set(tools)
+            "list_documents", "get_questions", "generate_questions",
+            "add_knowledge_node", "update_knowledge_node",
+            "delete_knowledge_node"} <= set(tools)
     with pytest.raises(AccessError):
         tools["get_knowledge_tree"].invoke({"workbook_id": 999999})
 
@@ -188,3 +198,141 @@ def test_agent_chat_endpoint_contract(client, auth_headers, monkeypatch):
     assert data["proposals"] == []
     assert data["navigate"] is None
     assert data["intent"] == "chat"
+
+
+def test_delete_proposal_does_not_write_until_confirmed(
+    client, session, registered_user, auth_headers, workbook
+):
+    user = _user(session, registered_user)
+    create_response = client.post(
+        "/api/knowledge",
+        json={"workbook_id": workbook["id"], "name": "待删除知识点", "level": 0},
+        headers=auth_headers,
+    )
+    knowledge_id = create_response.json()["id"]
+    tools = {tool.name: tool for tool in build_tools(session, user, object())}
+
+    proposal = tools["delete_knowledge_node"].invoke({"knowledge_id": knowledge_id})
+    assert proposal["action"] == "delete_knowledge_node"
+    assert proposal["expires_in_sec"] == 600
+    assert session.get(Knowledge, knowledge_id) is not None
+
+    response = client.post(
+        "/api/agent/confirm",
+        json={"proposal_id": proposal["proposal_id"], "approved": True},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["result"] == {"deleted": True, "knowledge_id": knowledge_id}
+    assert session.get(Knowledge, knowledge_id) is None
+
+    replay = client.post(
+        "/api/agent/confirm",
+        json={"proposal_id": proposal["proposal_id"], "approved": True},
+        headers=auth_headers,
+    )
+    assert replay.status_code == 404
+
+
+def test_rejected_proposal_is_discarded(
+    client, session, registered_user, auth_headers, workbook
+):
+    user = _user(session, registered_user)
+    node = client.post(
+        "/api/knowledge",
+        json={"workbook_id": workbook["id"], "name": "保留知识点", "level": 0},
+        headers=auth_headers,
+    ).json()
+    tools = {tool.name: tool for tool in build_tools(session, user, object())}
+    proposal = tools["delete_knowledge_node"].invoke({"knowledge_id": node["id"]})
+
+    response = client.post(
+        "/api/agent/confirm",
+        json={"proposal_id": proposal["proposal_id"], "approved": False},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["result"] == {"approved": False}
+    assert session.get(Knowledge, node["id"]) is not None
+
+
+def test_generate_proposal_saves_only_after_confirm(
+    client, session, monkeypatch, registered_user, auth_headers, workbook
+):
+    user = _user(session, registered_user)
+    generated = GeneratedQuestion(
+        type="true_false", content="ReAct 会调用工具。", answer="true"
+    )
+    monkeypatch.setattr(
+        generation_service, "generate_preview", lambda *args, **kwargs: [generated]
+    )
+    tools = {tool.name: tool for tool in build_tools(session, user, object())}
+    before = session.query(Question).filter(Question.workbook_id == workbook["id"]).count()
+
+    proposal = tools["generate_questions"].invoke({
+        "workbook_id": workbook["id"], "topic": "ReAct",
+        "question_type": "true_false", "count": 1, "difficulty": 1,
+    })
+    assert session.query(Question).filter(Question.workbook_id == workbook["id"]).count() == before
+
+    response = client.post(
+        "/api/agent/confirm",
+        json={"proposal_id": proposal["proposal_id"], "approved": True},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["result"]["saved"] == 1
+    after = session.query(Question).filter(
+        Question.workbook_id == workbook["id"]
+    ).count()
+    assert after == before + 1
+
+
+def test_proposal_is_bound_to_its_user(
+    client, session, registered_user, auth_headers, workbook
+):
+    user = _user(session, registered_user)
+    node = client.post(
+        "/api/knowledge",
+        json={"workbook_id": workbook["id"], "name": "私有知识点", "level": 0},
+        headers=auth_headers,
+    ).json()
+    tools = {tool.name: tool for tool in build_tools(session, user, object())}
+    proposal = tools["delete_knowledge_node"].invoke({"knowledge_id": node["id"]})
+    other = client.post(
+        "/api/auth/register",
+        json={"username": "other-user", "email": "other@example.com",
+              "password": "password123"},
+    ).json()
+
+    forbidden = client.post(
+        "/api/agent/confirm",
+        json={"proposal_id": proposal["proposal_id"], "approved": True},
+        headers={"Authorization": f"Bearer {other['access_token']}"},
+    )
+    assert forbidden.status_code == 404
+    assert session.get(Knowledge, node["id"]) is not None
+
+
+def test_expired_proposal_is_discarded(
+    client, session, monkeypatch, registered_user, auth_headers, workbook
+):
+    from services import proposal_service
+
+    user = _user(session, registered_user)
+    node = client.post(
+        "/api/knowledge",
+        json={"workbook_id": workbook["id"], "name": "过期知识点", "level": 0},
+        headers=auth_headers,
+    ).json()
+    monkeypatch.setattr(proposal_service, "PROPOSAL_TTL_SEC", 0)
+    tools = {tool.name: tool for tool in build_tools(session, user, object())}
+    proposal = tools["delete_knowledge_node"].invoke({"knowledge_id": node["id"]})
+
+    response = client.post(
+        "/api/agent/confirm",
+        json={"proposal_id": proposal["proposal_id"], "approved": True},
+        headers=auth_headers,
+    )
+    assert response.status_code == 410
+    assert session.get(Knowledge, node["id"]) is not None

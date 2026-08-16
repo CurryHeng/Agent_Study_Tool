@@ -39,17 +39,22 @@ def _tool_summary(name: str, content: str) -> str:
     except (json.JSONDecodeError, TypeError):
         return content[:200]
     if name == "generate_questions" and isinstance(data, dict):
+        if data.get("proposal_id"):
+            return data.get("impact", "已生成待确认的出题提案")
         saved = "已保存" if data.get("saved") else "未保存"
         return f"生成并审核通过 {data.get('approved', 0)} 道题；{saved}"
+    if isinstance(data, dict) and data.get("proposal_id"):
+        return data.get("impact", "已生成待确认提案")
     if isinstance(data, list):
         return f"返回 {len(data)} 项"
     return json.dumps(data, ensure_ascii=False, default=_json_value)[:200]
 
 
-def _collect_output(messages: list) -> tuple[str, list[dict], str]:
+def _collect_output(messages: list) -> tuple[str, list[dict], list[dict], str]:
     calls: dict[str, tuple[str, dict]] = {}
     steps: list[dict] = []
     used_tools: list[str] = []
+    proposals: list[dict] = []
     reply = ""
     for message in messages:
         if isinstance(message, AIMessage):
@@ -69,9 +74,15 @@ def _collect_output(messages: list) -> tuple[str, list[dict], str]:
                 "ok": not is_error,
                 "summary": _tool_summary(name, content),
             })
+            try:
+                tool_data = json.loads(content)
+                if isinstance(tool_data, dict) and tool_data.get("proposal_id"):
+                    proposals.append(tool_data)
+            except (json.JSONDecodeError, TypeError):
+                pass
             used_tools.append(name)
     intent = used_tools[-1] if used_tools else "chat"
-    return reply, steps, intent
+    return reply, steps, proposals, intent
 
 
 def run_task(
@@ -92,7 +103,7 @@ def run_task(
             {"messages": [HumanMessage(content=prompt)]},
             config={"recursion_limit": RECURSION_LIMIT},
         )
-        reply, steps, intent = _collect_output(state.get("messages", []))
+        reply, steps, proposals, intent = _collect_output(state.get("messages", []))
         result = {"reply": reply}
         if steps:
             result["last_tool"] = steps[-1]["tool"]
@@ -108,7 +119,7 @@ def run_task(
         "conversation_id": None,
         "reply": reply,
         "steps": steps,
-        "proposals": [],
+        "proposals": proposals,
         "navigate": None,
         "intent": intent,
         "result": result,

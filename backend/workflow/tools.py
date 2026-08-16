@@ -3,11 +3,13 @@ from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
 from models.enums import QuestionType
+from schemas.knowledge import KnowledgeCreate, KnowledgeUpdate
 from services import (
     access,
     document_service,
     generation_service,
     knowledge_service,
+    proposal_service,
     question_service,
     rag_service,
 )
@@ -25,6 +27,20 @@ class SearchInput(WorkbookInput):
 
 class KnowledgeInput(BaseModel):
     knowledge_id: int = Field(description="要读取详情的知识点 ID")
+
+
+class AddKnowledgeInput(WorkbookInput):
+    name: str = Field(min_length=1, max_length=255, description="新知识点名称")
+    parent_id: int | None = Field(default=None, description="可选的父知识点 ID")
+    description: str | None = Field(default=None, description="知识点描述")
+    level: int = Field(default=0, ge=0, description="知识点层级")
+
+
+class UpdateKnowledgeInput(KnowledgeInput):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    parent_id: int | None = None
+    description: str | None = None
+    level: int | None = Field(default=None, ge=0)
 
 
 class QuestionListInput(BaseModel):
@@ -65,9 +81,9 @@ def build_tools(db, user, llm) -> list[StructuredTool]:
                 question_service.list_questions(db, user, workbook_id)]
 
     def generate_questions(**kwargs):
-        """生成并审核题目预览；不写数据库。"""
+        """生成并审核题目预览，保存提案但不写题库。"""
         workbook_id = kwargs["workbook_id"]
-        workbook = access.get_visible_workbook(db, user, workbook_id)
+        workbook = access.get_owned_workbook(db, user, workbook_id)
         topic = kwargs.pop("topic")
         knowledge_id = kwargs.get("knowledge_id")
         context = f"出题主题：{topic}\n" + rag_service.build_context(
@@ -77,8 +93,42 @@ def build_tools(db, user, llm) -> list[StructuredTool]:
             llm, workbook.name, topic, kwargs["question_type"],
             kwargs["count"], kwargs["difficulty"], context,
         )
-        return {"preview": [q.model_dump(mode="json") for q in approved],
-                "approved": len(approved), "saved": False}
+        preview = [q.model_dump(mode="json") for q in approved]
+        return proposal_service.create(
+            user.id, "generate_questions", {"workbook_id": workbook_id,
+            "workbook_name": workbook.name}, {"before": None, "after":
+            {"questions": preview}}, f"向题库新增 {len(preview)} 道审核通过的题目",
+            {"workbook_id": workbook_id, "knowledge_id": knowledge_id,
+            "questions": preview},
+        )
+
+    def add_knowledge_node(**kwargs):
+        data = KnowledgeCreate.model_validate(kwargs)
+        access.get_owned_workbook(db, user, data.workbook_id)
+        return proposal_service.create(
+            user.id, "add_knowledge_node", {"workbook_id": data.workbook_id},
+            {"before": None, "after": data.model_dump(mode="json")},
+            f"新增知识点“{data.name}”", data.model_dump(mode="json"),
+        )
+
+    def update_knowledge_node(knowledge_id: int, **kwargs):
+        node = access.get_owned_knowledge(db, user, knowledge_id)
+        changes = KnowledgeUpdate.model_validate(kwargs).model_dump(exclude_unset=True)
+        return proposal_service.create(
+            user.id, "update_knowledge_node", {"knowledge_id": node.id,
+            "name": node.name}, {"before": {key: getattr(node, key) for key in changes},
+            "after": changes}, f"修改知识点“{node.name}”", {"knowledge_id": node.id,
+            "changes": changes},
+        )
+
+    def delete_knowledge_node(knowledge_id: int):
+        node = access.get_owned_knowledge(db, user, knowledge_id)
+        return proposal_service.create(
+            user.id, "delete_knowledge_node", {"knowledge_id": node.id,
+            "name": node.name}, {"before": {"name": node.name,
+            "description": node.description}, "after": None},
+            f"删除知识点“{node.name}”", {"knowledge_id": node.id},
+        )
 
     specs = [
         ("search_documents", "按主题语义检索练习册资料", SearchInput, search_documents),
@@ -86,8 +136,14 @@ def build_tools(db, user, llm) -> list[StructuredTool]:
         ("get_knowledge_detail", "读取一个知识点的详细内容", KnowledgeInput, get_knowledge_detail),
         ("list_documents", "列出练习册已导入的文档", WorkbookInput, list_documents),
         ("get_questions", "读取用户可见的题库题目", QuestionListInput, get_questions),
-        ("generate_questions", "按明确主题生成并审核题目预览；不会写入题库",
+        ("generate_questions", "生成并审核题目提案；用户确认前不会写入题库",
          GenerateInput, generate_questions),
+        ("add_knowledge_node", "提出新增知识点；用户确认前不会写入",
+         AddKnowledgeInput, add_knowledge_node),
+        ("update_knowledge_node", "提出修改知识点；用户确认前不会写入",
+         UpdateKnowledgeInput, update_knowledge_node),
+        ("delete_knowledge_node", "提出删除知识点；用户确认前不会删除",
+         KnowledgeInput, delete_knowledge_node),
     ]
     return [StructuredTool.from_function(name=name, description=desc,
             args_schema=schema, func=fn) for name, desc, schema, fn in specs]
