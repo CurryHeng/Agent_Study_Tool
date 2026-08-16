@@ -62,3 +62,20 @@ def list_messages(
         .limit(limit)
         .all()
     )
+
+
+def list_recent_messages(
+    db: Session, conversation_id: int, limit: int = 20
+) -> list[ConversationMessage]:
+    """读取最近消息并恢复为对话发生顺序，供 Agent 多轮上下文使用。"""
+    messages = (
+        db.query(ConversationMessage)
+        .filter(ConversationMessage.conversation_id == conversation_id)
+        .order_by(
+            ConversationMessage.created_at.desc(),
+            ConversationMessage.id.desc(),
+        )
+        .limit(limit)
+        .all()
+    )
+    return list(reversed(messages))

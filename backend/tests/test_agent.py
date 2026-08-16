@@ -53,9 +53,12 @@ def test_react_tool_calls_are_exposed_as_steps(session, registered_user):
     assert result["reply"] == "已根据资料整理完成。"
     assert result["intent"] == "search_documents"
     assert result["steps"] == [{
+        "id": 1,
         "tool": "search_documents", "args": {"workbook_id": 3, "query": "ReAct"},
-        "ok": True, "summary": "返回 1 项",
+        "status": "success", "ok": True, "summary": "返回 1 项", "error": None,
     }]
+    assert result["status"] == "completed"
+    assert result["error"] is None
     assert result["proposals"] == []
     assert result["navigate"] is None
 
@@ -94,6 +97,8 @@ def test_failed_tool_step_is_marked_not_ok(session, registered_user):
     ]
     result = agent_service.run_task(session, user, "读取", graph=FakeGraph(messages))
     assert result["steps"][0]["ok"] is False
+    assert result["steps"][0]["status"] == "failed"
+    assert result["steps"][0]["error"] == "无权访问"
 
 
 def test_generate_step_has_structured_summary(session, registered_user):
@@ -121,6 +126,55 @@ def test_generate_step_has_structured_summary(session, registered_user):
     result = agent_service.run_task(session, user, "出 10 道题", graph=FakeGraph(messages))
     assert result["steps"][0]["summary"] == "向题库新增 10 道审核通过的题目"
     assert result["proposals"][0]["proposal_id"] == "proposal-1"
+    assert result["status"] == "waiting_confirm"
+
+
+def test_page_entity_context_resolves_here(session, registered_user):
+    user = _user(session, registered_user)
+    graph = FakeGraph([AIMessage(content="将修改当前知识点。")])
+    agent_service.run_task(
+        session,
+        user,
+        "把这里改简单点",
+        conversation_id=None,
+        context={
+            "route": "/mindmap",
+            "entity": {"type": "knowledge_node", "id": 16},
+        },
+        graph=graph,
+    )
+    prompt = graph.input["messages"][-1]
+    assert isinstance(prompt, HumanMessage)
+    assert "当前页面路由：/mindmap" in prompt.content
+    assert "type=knowledge_node, id=16" in prompt.content
+    assert "这里" in prompt.content
+
+
+def test_previous_messages_are_loaded_for_multiturn(session, registered_user):
+    user = _user(session, registered_user)
+    first_graph = FakeGraph([AIMessage(content="已生成 5 道 ReAct 基础题。")])
+    first = agent_service.run_task(
+        session, user, "生成 5 道 ReAct 基础题", graph=first_graph
+    )
+
+    second_graph = FakeGraph([AIMessage(content="已继续生成 5 道难题。")])
+    agent_service.run_task(
+        session,
+        user,
+        "再来 5 道难的",
+        conversation_id=first["conversation_id"],
+        graph=second_graph,
+    )
+
+    messages = second_graph.input["messages"]
+    assert [type(message) for message in messages] == [
+        HumanMessage,
+        AIMessage,
+        HumanMessage,
+    ]
+    assert messages[0].content == "生成 5 道 ReAct 基础题"
+    assert messages[1].content == "已生成 5 道 ReAct 基础题。"
+    assert messages[2].content == "再来 5 道难的"
 
 
 def test_agent_task_records_structured_result(session, registered_user):
@@ -198,6 +252,20 @@ def test_agent_chat_endpoint_contract(client, auth_headers, monkeypatch):
     assert data["proposals"] == []
     assert data["navigate"] is None
     assert data["intent"] == "chat"
+    assert data["status"] == "completed"
+    assert data["error"] is None
+
+
+def test_agent_chat_rejects_unknown_context_entity(client, auth_headers):
+    response = client.post(
+        "/api/agent/chat",
+        json={
+            "message": "处理这里",
+            "context": {"entity": {"type": "unknown", "id": 1}},
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 422
 
 
 def test_delete_proposal_does_not_write_until_confirmed(

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from models import User
 from models.enums import AgentTaskStatus
 from repositories import agent_task_repository, conversation_repository
+from schemas.agent import AgentChatContext
 from services.access import AccessError
 from workflow.graph import RECURSION_LIMIT, build_graph
 
@@ -51,6 +52,34 @@ def _tool_summary(name: str, content: str) -> str:
     return json.dumps(data, ensure_ascii=False, default=_json_value)[:200]
 
 
+def _context_prompt(context: AgentChatContext | dict | None) -> str:
+    if context is None:
+        return ""
+    data = context.model_dump(exclude_none=True) if hasattr(context, "model_dump") else context
+    if not isinstance(data, dict):
+        return ""
+    lines = []
+    if route := data.get("route"):
+        lines.append(f"当前页面路由：{route}")
+    entity = data.get("entity")
+    if isinstance(entity, dict) and entity.get("type") and entity.get("id") is not None:
+        lines.append(f"当前选中实体：type={entity['type']}, id={entity['id']}")
+        lines.append("用户说“这里”“这个”时，优先指向上述当前选中实体。")
+    if extra := data.get("extra"):
+        lines.append(f"其他页面上下文：{json.dumps(extra, ensure_ascii=False)}")
+    return "\n".join(lines)
+
+
+def _history_messages(db: Session, conversation_id: int) -> list:
+    history = []
+    for message in conversation_repository.list_recent_messages(db, conversation_id):
+        if message.role == "user":
+            history.append(HumanMessage(content=message.content))
+        elif message.role == "assistant":
+            history.append(AIMessage(content=message.content))
+    return history
+
+
 def _collect_output(messages: list) -> tuple[str, list[dict], list[dict], str]:
     calls: dict[str, tuple[str, dict]] = {}
     steps: list[dict] = []
@@ -70,10 +99,13 @@ def _collect_output(messages: list) -> tuple[str, list[dict], list[dict], str]:
             content = _content_text(message.content)
             is_error = getattr(message, "status", None) == "error"
             steps.append({
+                "id": len(steps) + 1,
                 "tool": name,
                 "args": args,
+                "status": "failed" if is_error else "success",
                 "ok": not is_error,
                 "summary": _tool_summary(name, content),
+                "error": content[:500] if is_error else None,
             })
             try:
                 tool_data = json.loads(content)
@@ -93,15 +125,16 @@ def run_task(
     workbook_id: int | None = None,
     *,
     conversation_id: int | None = None,
-    context: dict | None = None,
+    context: AgentChatContext | dict | None = None,
     graph=None,
 ) -> dict:
     task_id = str(uuid.uuid4())
     prompt = user_request
     if workbook_id is not None:
         prompt = f"当前练习册 ID：{workbook_id}\n用户请求：{user_request}"
-    if context:
-        prompt = f"当前页面上下文：{context}\n{prompt}"
+    context_text = _context_prompt(context)
+    if context_text:
+        prompt = f"{context_text}\n{prompt}"
 
     # 会话归属与创建（#46/#47）
     conv = None
@@ -114,10 +147,12 @@ def run_task(
     if not conv.title:
         conv.title = user_request[:50]
 
+    history = _history_messages(db, conv.id)
+
     try:
         runner = graph or build_graph(db, user)
         state = runner.invoke(
-            {"messages": [HumanMessage(content=prompt)]},
+            {"messages": [*history, HumanMessage(content=prompt)]},
             config={"recursion_limit": RECURSION_LIMIT},
         )
         reply, steps, proposals, intent = _collect_output(state.get("messages", []))
@@ -142,11 +177,13 @@ def run_task(
 
     payload = {
         "task_id": task_id,
+        "status": "waiting_confirm" if proposals else "completed",
         "conversation_id": conv.id,
         "reply": reply,
         "steps": steps,
         "proposals": proposals,
         "navigate": None,
+        "error": None,
         "intent": intent,
         "result": result,
     }
