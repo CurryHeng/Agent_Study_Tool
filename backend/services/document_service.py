@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from config import settings
 from db.uow import UnitOfWork
 from models import Document, User
-from models.enums import DocumentStatus
+from models.enums import DocumentStatus, QuestionType
 from parsers.factory import detect_type, parse_file
 from repositories import document_repository
 from schemas.document import DocumentDetailOut, DocumentOut, SectionOut
@@ -80,7 +80,9 @@ def read_parsed_sections(doc_id: int) -> list:
     ]
 
 
-def _to_detail(doc: Document, sections: list[SectionOut]) -> DocumentDetailOut:
+def _to_detail(
+    doc: Document, sections: list[SectionOut], generated_questions=None
+) -> DocumentDetailOut:
     return DocumentDetailOut(
         id=doc.id,
         workbook_id=doc.workbook_id,
@@ -91,13 +93,66 @@ def _to_detail(doc: Document, sections: list[SectionOut]) -> DocumentDetailOut:
         status=doc.status,
         created_at=doc.created_at,
         sections=sections,
+        generated_questions=generated_questions,
     )
 
 
+
+
+def _auto_generate_questions(
+    db: Session,
+    user: User,
+    workbook,
+    parsed,
+    sections: list[SectionOut],
+    *,
+    question_type: str,
+    count: int,
+    difficulty: int,
+    scope: str | None,
+):
+    """导入后自动生成题目预览（不入库）。失败不阻断上传。"""
+    try:
+        from services import generation_service
+        from services.llm_service import get_llm
+
+        if not settings.deepseek_api_key and not ai_settings.get_text_config().get("api_key"):
+            return None
+
+        try:
+            qtype = QuestionType(question_type)
+        except ValueError:
+            qtype = QuestionType.single_choice
+
+        topic = scope or parsed.title or "本章内容"
+        context_parts = [f"文档标题：{parsed.title}"]
+        for s in sections:
+            if scope and scope not in s.title:
+                continue
+            context_parts.append(f"章节：{s.title}\n" + "\n".join(s.paragraphs))
+        context = "\n".join(context_parts)[:6000]
+
+        return generation_service.generate_preview(
+            get_llm(), workbook.name, topic, qtype, count, difficulty, context
+        )
+    except Exception:
+        return None
+
+
 def upload_document(
-    db: Session, user: User, workbook_id: int, filename: str, content: bytes
+    db: Session,
+    user: User,
+    workbook_id: int,
+    filename: str,
+    content: bytes,
+    *,
+    auto_generate: bool = False,
+    question_type: str = "single_choice",
+    count: int = 5,
+    difficulty: int = 1,
+    scope: str | None = None,
 ) -> DocumentDetailOut:
-    access.get_owned_workbook(db, user, workbook_id)
+    workbook = access.get_owned_workbook(db, user, workbook_id)
 
     file_type = detect_type(filename)
     if file_type is None:
@@ -147,7 +202,16 @@ def upload_document(
         SectionOut(title=s.title, level=s.level, paragraphs=s.paragraphs)
         for s in parsed.sections
     ]
-    return _to_detail(doc, sections)
+
+    generated_questions = None
+    if auto_generate:
+        generated_questions = _auto_generate_questions(
+            db, user, workbook, parsed, sections,
+            question_type=question_type, count=count,
+            difficulty=difficulty, scope=scope,
+        )
+
+    return _to_detail(doc, sections, generated_questions)
 
 
 def list_documents(db: Session, user: User, workbook_id: int) -> list[DocumentOut]:

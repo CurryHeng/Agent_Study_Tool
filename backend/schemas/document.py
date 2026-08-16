@@ -4,6 +4,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 
 from models.enums import DocumentStatus
+from schemas.generation import GeneratedQuestion
 
 
 class SectionOut(BaseModel):
@@ -27,3 +28,4 @@ class DocumentOut(BaseModel):
 
 class DocumentDetailOut(DocumentOut):
     sections: list[SectionOut] = []
+    generated_questions: list[GeneratedQuestion] | None = None

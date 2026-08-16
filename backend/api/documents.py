@@ -15,12 +15,26 @@ router = APIRouter(prefix="/api/documents", tags=["documents"])
 def upload_document(
     workbook_id: int = Form(...),
     file: UploadFile = File(...),
+    auto_generate: bool = Form(False),
+    question_type: str = Form("single_choice"),
+    count: int = Form(5),
+    difficulty: int = Form(1),
+    scope: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     content = file.file.read()
     out = document_service.upload_document(
-        db, user, workbook_id, file.filename or "unnamed", content
+        db,
+        user,
+        workbook_id,
+        file.filename or "unnamed",
+        content,
+        auto_generate=auto_generate,
+        question_type=question_type,
+        count=count,
+        difficulty=difficulty,
+        scope=scope,
     )
     db.commit()
     return out

@@ -158,6 +158,7 @@ export interface Section {
 
 export interface DocumentDetail extends Document {
   sections: Section[]
+  generated_questions?: GeneratedQuestion[] | null
 }
 
 export interface Bucket {

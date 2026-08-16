@@ -2,6 +2,7 @@
 from pathlib import Path
 
 from parsers.base import ParsedDocument
+from parsers.html import HtmlParser
 from parsers.image import ImageParser
 from parsers.markdown import MarkdownParser
 from parsers.pdf import PdfParser
@@ -14,6 +15,7 @@ PARSERS = {
     "word": WordParser,
     "ppt": PptParser,
     "image": ImageParser,
+    "html": HtmlParser,
 }
 
 EXT_MAP = {
@@ -26,6 +28,8 @@ EXT_MAP = {
     ".png": "image",
     ".jpg": "image",
     ".jpeg": "image",
+    ".html": "html",
+    ".htm": "html",
 }
 
 

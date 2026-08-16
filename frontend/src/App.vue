@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import {
   BarChart3,
   BookX,
+  FileText,
   GraduationCap,
   History,
   Home,
@@ -29,6 +30,7 @@ const navItems = [
   { to: '/questions', label: '题库', icon: Library },
   { to: '/stats', label: '统计', icon: BarChart3 },
   { to: '/history', label: '时间线', icon: History },
+  { to: '/library', label: '文件库', icon: FileText },
   { to: '/visualization', label: '可视化', icon: Network },
   { to: '/wrong', label: '错题本', icon: BookX },
   { to: '/assistant', label: '智能助手', icon: Sparkles },

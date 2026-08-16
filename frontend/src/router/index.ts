@@ -11,6 +11,7 @@ import MindMapView from '../views/MindMapView.vue'
 import SettingsView from '../views/SettingsView.vue'
 import StatsView from '../views/StatsView.vue'
 import HistoryView from '../views/HistoryView.vue'
+import LibraryView from '../views/LibraryView.vue'
 import KnowledgeGraphView from '../views/KnowledgeGraphView.vue'
 import VisualizationView from '../views/VisualizationView.vue'
 import AgentChatView from '../views/AgentChatView.vue'
@@ -30,6 +31,7 @@ const router = createRouter({
     { path: '/visualization', component: VisualizationView },
     { path: '/stats', component: StatsView },
     { path: '/history', component: HistoryView },
+    { path: '/library', component: LibraryView },
     { path: '/knowledge-graph', component: KnowledgeGraphView },
     { path: '/assistant', component: AgentChatView },
     { path: '/settings', component: SettingsView },

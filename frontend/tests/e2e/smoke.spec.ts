@@ -72,3 +72,10 @@ test('错题本显示分页控件', async ({ page }) => {
   await page.goto('/wrong')
   await expect(page.getByText('第 1 页')).toBeVisible()
 })
+
+test('文件库页面可打开', async ({ page }) => {
+  await login(page)
+  await page.goto('/library')
+  await expect(page.getByRole('heading', { name: '文件库' })).toBeVisible()
+  await expect(page.getByText('支持 PDF / Word / PPT / Markdown / TXT / HTML / 图片')).toBeVisible()
+})

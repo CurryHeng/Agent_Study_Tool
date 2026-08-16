@@ -127,10 +127,26 @@ export const documentApi = {
   get: (id: number) => api.get<DocumentDetail>(`/documents/${id}`),
   remove: (id: number) => api.del<{ ok: boolean }>(`/documents/${id}`),
   index: (id: number) => api.post<{ chunks: number }>(`/documents/${id}/index`),
-  upload: (file: File, workbookId: number, onProgress?: (pct: number) => void) => {
+  upload: (
+    file: File,
+    workbookId: number,
+    options?: {
+      autoGenerate?: boolean
+      questionType?: string
+      count?: number
+      difficulty?: number
+      scope?: string
+    },
+    onProgress?: (pct: number) => void,
+  ) => {
     const form = new FormData()
     form.append('workbook_id', String(workbookId))
     form.append('file', file)
+    if (options?.autoGenerate) form.append('auto_generate', 'true')
+    if (options?.questionType) form.append('question_type', options.questionType)
+    if (options?.count != null) form.append('count', String(options.count))
+    if (options?.difficulty != null) form.append('difficulty', String(options.difficulty))
+    if (options?.scope) form.append('scope', options.scope)
     return uploadWithProgress<DocumentDetail>('/documents/upload', form, onProgress || (() => {}))
   },
 }
