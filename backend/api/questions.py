@@ -1,5 +1,5 @@
 """题目路由。"""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from api.deps import get_current_user
@@ -8,6 +8,7 @@ from models import User
 from schemas.generation import GeneratedQuestion, GenerateRequest, GenerateResult
 from schemas.question import QuestionCreate, QuestionOut, QuestionUpdate
 from services import generation_service, question_service, rag_service
+from services.access import AccessError
 
 router = APIRouter(prefix="/api/questions", tags=["questions"])
 
@@ -72,7 +73,7 @@ def generate_similar(
 ):
     result = generation_service.generate_similar(db, user, question_id)
     if result is None:
-        raise HTTPException(500, "生成相似题失败，请稍后再试")
+        raise AccessError(500, "生成相似题失败，请稍后再试")
     return result
 
 

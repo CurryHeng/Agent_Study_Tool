@@ -21,6 +21,7 @@ import { knowledgeApi, questionApi, workbookApi } from '../api'
 import { SYSTEM_WORKBOOK_ID } from '../lib/constants'
 import type { GenerateResult, Knowledge, Question, SimilarQuestion, Workbook } from '../types'
 import MarkdownContent from '../components/MarkdownContent.vue'
+import Pagination from '../components/Pagination.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -457,10 +458,12 @@ onMounted(load)
     </div>
 
     <!-- 分页 -->
-    <div class="mt-4 flex items-center justify-center gap-2">
-      <button class="btn-secondary !py-1.5 text-xs" :disabled="page <= 1" @click="prevPage">上一页</button>
-      <span class="text-xs text-slate-400">第 {{ page }} 页</span>
-      <button class="btn-secondary !py-1.5 text-xs" :disabled="questions.length < pageSize" @click="nextPage">下一页</button>
-    </div>
+    <Pagination
+      :page="page"
+      :page-size="pageSize"
+      :has-more="questions.length >= pageSize"
+      @prev="prevPage"
+      @next="nextPage"
+    />
   </div>
 </template>

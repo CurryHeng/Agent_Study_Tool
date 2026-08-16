@@ -309,6 +309,7 @@ npm test                                 # vitest 单元测试
 3. PR 标题写清任务编号（对应 GitHub issue），合并前必须通过：后端 `pytest` + `ruff`、前端 `typecheck` + `build`。
 4. 合并用 **Squash merge**，保持 main 历史线性干净。
 5. 禁止 force-push 到共享分支；`.env`、密钥、数据文件（`backend/data/`）禁止入库。
+6. 禁止使用自动合并工具；所有 PR 必须至少一人 review 后手动 squash merge。
 
 ## 10. 测试规范（详细设计 §10）
 

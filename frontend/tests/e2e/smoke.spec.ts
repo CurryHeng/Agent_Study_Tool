@@ -48,3 +48,27 @@ test('AI 助手聊天页可输入', async ({ page }) => {
   await page.fill('textarea', '你好')
   await expect(page.getByRole('button', { name: '发送' })).toBeEnabled()
 })
+
+test('时间线页可打开', async ({ page }) => {
+  await login(page)
+  await page.goto('/history')
+  await expect(page.getByRole('heading', { name: '学习活动时间线' })).toBeVisible()
+})
+
+test('知识图谱页可通过可视化页签打开', async ({ page }) => {
+  await login(page)
+  await page.goto('/visualization?tab=graph')
+  await expect(page.getByRole('heading', { name: '知识图谱' })).toBeVisible()
+})
+
+test('AI 助手会话侧边栏可见', async ({ page }) => {
+  await login(page)
+  await page.goto('/assistant')
+  await expect(page.getByText('会话', { exact: true })).toBeVisible()
+})
+
+test('错题本显示分页控件', async ({ page }) => {
+  await login(page)
+  await page.goto('/wrong')
+  await expect(page.getByText('第 1 页')).toBeVisible()
+})

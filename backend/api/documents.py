@@ -51,8 +51,6 @@ def delete_document(
     user: User = Depends(get_current_user),
 ) -> dict:
     document_service.delete_document(db, user, document_id)
-    rag_service.delete_document_vectors(document_id)
-    db.commit()
     return {"ok": True}
 
 
