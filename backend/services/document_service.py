@@ -6,6 +6,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from config import settings
+from db.uow import UnitOfWork
 from models import Document, User
 from models.enums import DocumentStatus
 from parsers.factory import detect_type, parse_file
@@ -167,4 +168,10 @@ def delete_document(db: Session, user: User, document_id: int) -> None:
     if doc is None:
         raise access.AccessError(404, "文档不存在")
     access.get_owned_workbook(db, user, doc.workbook_id)
-    document_repository.delete(db, doc)
+
+    # #57 UoW：先清理 Chroma 向量，再提交 SQLite 删除；任一步失败都回滚
+    from services import rag_service
+
+    with UnitOfWork(db) as uow:
+        uow.add_pre_commit(lambda: rag_service.delete_document_vectors(doc.id))
+        document_repository.delete(db, doc)

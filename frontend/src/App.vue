@@ -29,7 +29,7 @@ const navItems = [
   { to: '/questions', label: '题库', icon: Library },
   { to: '/stats', label: '统计', icon: BarChart3 },
   { to: '/history', label: '时间线', icon: History },
-  { to: '/mindmap', label: '可视化', icon: Network },
+  { to: '/visualization', label: '可视化', icon: Network },
   { to: '/wrong', label: '错题本', icon: BookX },
   { to: '/assistant', label: '智能助手', icon: Sparkles },
   { to: '/settings', label: '设置', icon: Settings },

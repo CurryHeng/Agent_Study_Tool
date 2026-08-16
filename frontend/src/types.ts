@@ -287,6 +287,26 @@ export interface HistoryEvent {
   created_at: string
 }
 
+// ── 知识图谱（#58） ─────────────────────────────────────
+export interface KnowledgeGraphNode {
+  id: number
+  name: string
+  parent_id: number | null
+  level: number
+}
+
+export interface KnowledgeGraphEdge {
+  source: number
+  target: number
+  type: string
+  label?: string | null
+}
+
+export interface KnowledgeGraph {
+  nodes: KnowledgeGraphNode[]
+  edges: KnowledgeGraphEdge[]
+}
+
 // ── AI 供应商设置（设置页） ─────────────────────────────
 export interface AiProviderConfig {
   provider: string

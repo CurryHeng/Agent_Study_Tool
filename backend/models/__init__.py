@@ -5,6 +5,7 @@ from models.api_key import ApiKey
 from models.conversation import Conversation, ConversationMessage
 from models.document import Document
 from models.knowledge import Knowledge
+from models.knowledge_relation import KnowledgeRelation
 from models.question import Question
 from models.question_option import QuestionOption
 from models.refresh_token import RefreshToken
@@ -21,6 +22,7 @@ __all__ = [
     "ConversationMessage",
     "Document",
     "Knowledge",
+    "KnowledgeRelation",
     "Question",
     "QuestionOption",
     "RefreshToken",

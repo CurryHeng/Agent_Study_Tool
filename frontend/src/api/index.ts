@@ -7,6 +7,7 @@ import type {
   Conversation,
   ConversationMessage,
   HistoryEvent,
+  KnowledgeGraph,
   AnswerResult,
   Document,
   DocumentDetail,
@@ -142,6 +143,12 @@ export const statsApi = {
 // ── 学习活动时间线（#59） ─────────────────────────────────
 export const historyApi = {
   list: (limit = 100) => api.get<HistoryEvent[]>(`/history?limit=${limit}`),
+}
+
+// ── 知识图谱（#58） ──────────────────────────────────────
+export const knowledgeGraphApi = {
+  get: (workbookId: number) =>
+    api.get<KnowledgeGraph>(`/knowledge-graph?workbook_id=${workbookId}`),
 }
 
 // ── AI 供应商设置 ────────────────────────────────────────
