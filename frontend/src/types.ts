@@ -183,12 +183,16 @@ export interface Stats {
   week_days: number
 }
 
-// ── AI 助手（#33 AgentChatView 新契约） ──────────────────
+// ── AI 助手（#45 按 Agent 接口契约 v2） ──────────────────
 export interface AgentStep {
+  id?: number
   tool: string
+  status?: 'success' | 'failed'
   args?: Record<string, unknown> | null
-  ok: boolean
   summary?: string | null
+  error?: string | null
+  /** 兼容旧字段 */
+  ok?: boolean
 }
 
 export interface AgentProposal {
@@ -200,24 +204,53 @@ export interface AgentProposal {
   expires_in_sec?: number | null
 }
 
-export interface AgentChatContext {
-  view?: string | null
-  selected_knowledge_id?: number | null
-  current_question_id?: number | null
+export interface AgentChatEntity {
+  type?: 'knowledge_node' | 'question' | 'document' | 'workbook' | 'plan' | null
+  id?: number | null
 }
+
+export interface AgentChatContext {
+  route?: string | null
+  entity?: AgentChatEntity | null
+}
+
+export type AgentChatStatus = 'completed' | 'waiting_confirm' | 'failed' | 'need_input'
 
 export interface AgentChatResponse {
   task_id?: string | null
+  status?: AgentChatStatus | null
   conversation_id?: number | null
   reply: string
   steps?: AgentStep[] | null
   proposals?: AgentProposal[] | null
   navigate?: string | null
+  error?: { code?: string; message?: string } | null
+  /** 旧字段，deprecated */
+  intent?: string | null
+  result?: Record<string, unknown> | null
 }
 
 export interface AgentConfirmResponse {
   ok: boolean
   result?: Record<string, unknown> | null
+}
+
+// ── 会话列表（#47） ─────────────────────────────────────
+export interface Conversation {
+  id: number
+  title: string | null
+  created_at: string
+  updated_at: string
+  last_message?: string | null
+}
+
+export interface ConversationMessage {
+  id: number
+  conversation_id: number
+  role: 'user' | 'assistant'
+  content: string
+  metadata?: Record<string, unknown> | null
+  created_at: string
 }
 
 // ── AI 供应商设置（设置页） ─────────────────────────────

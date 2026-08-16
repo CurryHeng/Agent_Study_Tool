@@ -4,6 +4,8 @@ import type {
   AgentChatResponse,
   AgentConfirmResponse,
   AiSettings,
+  Conversation,
+  ConversationMessage,
   AnswerResult,
   Document,
   DocumentDetail,
@@ -109,6 +111,15 @@ export const statsApi = {
 export const settingsApi = {
   getAi: () => api.get<AiSettings>('/settings/ai'),
   updateAi: (payload: AiSettings) => api.put<AiSettings>('/settings/ai', payload),
+}
+
+// ── 会话（#47） ──────────────────────────────────────────
+export const conversationApi = {
+  list: () => api.get<Conversation[]>('/conversations'),
+  create: (title?: string) => api.post<Conversation>('/conversations', { title }),
+  messages: (id: number, limit = 50, offset = 0) =>
+    api.get<ConversationMessage[]>(`/conversations/${id}/messages?limit=${limit}&offset=${offset}`),
+  remove: (id: number) => api.del<{ ok: boolean }>(`/conversations/${id}`),
 }
 
 // ── AI 助手 ─────────────────────────────────────────────
