@@ -22,7 +22,10 @@ def chat(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    result = agent_service.run_task(db, user, body.message, body.workbook_id)
+    result = agent_service.run_task(
+        db, user, body.message, body.workbook_id,
+        conversation_id=body.conversation_id, context=body.context,
+    )
     db.commit()
     return AgentChatResponse(**result)
 

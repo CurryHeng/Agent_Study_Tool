@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 
 from models import User
 from models.enums import AgentTaskStatus
-from repositories import agent_task_repository
+from repositories import agent_task_repository, conversation_repository
+from services.access import AccessError
 from workflow.graph import RECURSION_LIMIT, build_graph
 
 
@@ -91,12 +92,28 @@ def run_task(
     user_request: str,
     workbook_id: int | None = None,
     *,
+    conversation_id: int | None = None,
+    context: dict | None = None,
     graph=None,
 ) -> dict:
     task_id = str(uuid.uuid4())
     prompt = user_request
     if workbook_id is not None:
         prompt = f"当前练习册 ID：{workbook_id}\n用户请求：{user_request}"
+    if context:
+        prompt = f"当前页面上下文：{context}\n{prompt}"
+
+    # 会话归属与创建（#46/#47）
+    conv = None
+    if conversation_id is not None:
+        conv = conversation_repository.get_by_id(db, conversation_id)
+        if conv is None or conv.user_id != user.id:
+            raise AccessError(404, "会话不存在")
+    if conv is None:
+        conv = conversation_repository.create(db, user.id)
+    if not conv.title:
+        conv.title = user_request[:50]
+
     try:
         runner = graph or build_graph(db, user)
         state = runner.invoke(
@@ -114,9 +131,18 @@ def run_task(
         )
         raise
 
+    # 持久化消息（用户 + 助手），metadata 保留 steps/proposals/navigate
+    conversation_repository.add_message(
+        db, conv.id, "user", user_request
+    )
+    conversation_repository.add_message(
+        db, conv.id, "assistant", reply,
+        metadata={"steps": steps, "proposals": proposals, "navigate": None},
+    )
+
     payload = {
         "task_id": task_id,
-        "conversation_id": None,
+        "conversation_id": conv.id,
         "reply": reply,
         "steps": steps,
         "proposals": proposals,

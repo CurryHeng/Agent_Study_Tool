@@ -2,6 +2,7 @@
 from models.agent_task import AgentTask
 from models.answer_record import AnswerRecord
 from models.api_key import ApiKey
+from models.conversation import Conversation, ConversationMessage
 from models.document import Document
 from models.knowledge import Knowledge
 from models.question import Question
@@ -16,6 +17,8 @@ __all__ = [
     "AgentTask",
     "AnswerRecord",
     "ApiKey",
+    "Conversation",
+    "ConversationMessage",
     "Document",
     "Knowledge",
     "Question",
