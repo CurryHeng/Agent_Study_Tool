@@ -79,6 +79,15 @@ def test_validator_fill_blank_with_options():
     assert "非选择题不应携带选项" in validate_question(q)
 
 
+def test_validator_true_false_accepts_answer_without_options():
+    q = GeneratedQuestion(
+        type=QuestionType.true_false,
+        content="ReAct 会根据工具观察结果继续推理。",
+        answer="true",
+    )
+    assert validate_question(q) == []
+
+
 # ── 编排：生成 → 审核 → 入库 ─────────────────────────────
 def test_generate_single_choice(client, auth_headers, registered_user, session):
     user = session.get(User, registered_user["user"]["id"])

@@ -9,5 +9,11 @@ class AgentChatRequest(BaseModel):
 
 class AgentChatResponse(BaseModel):
     task_id: str
+    conversation_id: int | None = None
+    reply: str
+    steps: list[dict] = []
+    proposals: list[dict] = []
+    navigate: str | None = None
+    # 兼容旧 Dashboard，待聊天页完成迁移后移除。
     intent: str
     result: dict

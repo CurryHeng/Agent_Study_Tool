@@ -63,6 +63,10 @@ class LLMService:
     def generate_json(self, system: str, user: str) -> dict:
         return extract_json(self.generate(system, user))
 
+    def chat_model(self):
+        """返回供 LangGraph 使用的聊天模型，模型创建仍统一由本服务负责。"""
+        return self._get_chat()
+
 
 def get_llm() -> LLMService:
     return LLMService()

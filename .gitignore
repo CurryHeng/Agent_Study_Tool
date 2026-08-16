@@ -29,6 +29,7 @@ Desktop.ini
 backend/data/
 
 # Python
+.venv/
 __pycache__/
 *.pyc
 .pytest_cache/

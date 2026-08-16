@@ -1,14 +1,11 @@
 """核心学习闭环端到端集成测试（登录 → 题库 → 刷题 → 判题 → 错题 → Agent）。"""
 
+from langchain_core.messages import AIMessage
 
-class MockLLM:
-    def __init__(self, responses):
-        self.responses = list(responses)
 
-    def generate_json(self, system, user):
-        if not self.responses:
-            return {"intent": "chat", "params": {}}
-        return self.responses.pop(0)
+class MockGraph:
+    def invoke(self, state, config=None):
+        return {"messages": state["messages"] + [AIMessage(content="你好！")]}
 
 
 def test_full_learning_loop(client, registered_user, monkeypatch):
@@ -72,9 +69,10 @@ def test_full_learning_loop(client, registered_user, monkeypatch):
     assert wrong_records[0]["correct_answer"] == "B"
     assert wrong_records[0]["wrong_answer"] == "A"
 
-    # 9. Agent 基础入口（mock navigator LLM）
-    from workflow import graph
+    # 9. Agent 基础入口（mock ReAct 图，测试中不调用真实模型）
+    from services import agent_service
 
-    monkeypatch.setattr(graph, "get_llm", lambda: MockLLM([{"intent": "chat", "params": {}}]))
+    monkeypatch.setattr(agent_service, "build_graph", lambda db, user: MockGraph())
     chat = client.post("/api/agent/chat", json={"message": "你好"}, headers=headers).json()
     assert chat["intent"] == "chat"
+    assert chat["reply"] == "你好！"

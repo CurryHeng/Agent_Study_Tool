@@ -1,294 +1,190 @@
-"""Navigator + Orchestrator（LangGraph）图流程测试（对齐详细设计）。"""
+"""主 Agent ReAct 图、工具调用轨迹与任务日志测试。"""
+import json
+
 import pytest
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from pydantic import ValidationError
 
 from models import AgentTask, User
 from models.enums import AgentTaskStatus
-from services import access, agent_service
+from schemas.generation import GeneratedQuestion, ReviewResult
+from services import agent_service, generation_service
+from services.access import AccessError
+from workflow.graph import RECURSION_LIMIT
+from workflow.tools import GenerateInput, build_tools
 
 
-class MockLLM:
-    def __init__(self, responses):
-        self.responses = list(responses)
-        self.calls = 0
+class FakeGraph:
+    def __init__(self, messages=None, error=None):
+        self.messages = messages or []
+        self.error = error
+        self.input = None
+        self.config = None
 
-    def generate_json(self, system, user):
-        self.calls += 1
-        if not self.responses:
-            return {"intent": "chat", "params": {}}
-        return self.responses.pop(0)
+    def invoke(self, state, config=None):
+        self.input = state
+        self.config = config
+        if self.error:
+            raise self.error
+        return {"messages": state["messages"] + self.messages}
 
 
 def _user(session, registered_user):
     return session.get(User, registered_user["user"]["id"])
 
 
-def _nav(intent, params=None):
-    return MockLLM([{"intent": intent, "params": params or {}}])
+def _tool_messages():
+    return [
+        AIMessage(content="", tool_calls=[{
+            "name": "search_documents", "args": {"workbook_id": 3, "query": "ReAct"},
+            "id": "call-1", "type": "tool_call",
+        }]),
+        ToolMessage(content='[{"content":"ReAct combines reasoning and acting"}]',
+                    tool_call_id="call-1", name="search_documents"),
+        AIMessage(content="已根据资料整理完成。"),
+    ]
 
 
-def _choice(content="1+1=?", answer="B"):
-    return {
-        "type": "single_choice",
-        "content": content,
-        "answer": answer,
-        "options": [
-            {"option_key": "A", "content": "0"},
-            {"option_key": "B", "content": "2"},
-            {"option_key": "C", "content": "3"},
-            {"option_key": "D", "content": "4"},
-        ],
-    }
-
-
-def _pass_review(question, params):
-    return True
-
-
-def _echo_save(params, questions):
-    return [{"content": q.content, "answer": q.answer} for q in questions]
-
-
-# ── 意图路由 ─────────────────────────────────────────────
-def test_generate_questions_intent(client, auth_headers, registered_user, session, workbook):
+def test_react_tool_calls_are_exposed_as_steps(session, registered_user):
     user = _user(session, registered_user)
-    nav = _nav("generate_questions", {"workbook_id": workbook["id"], "count": 2})
-
-    def fake_generate(params):
-        return [_choice("1+1=?"), _choice("2+2=?", "C")]
-
     result = agent_service.run_task(
-        session,
-        user,
-        "帮我出2道选择题",
-        navigator_llm=nav,
-        generate_fn=fake_generate,
-        review_fn=_pass_review,
-        save_fn=_echo_save,
+        session, user, "整理 ReAct", 3, graph=FakeGraph(_tool_messages())
     )
-    assert result["intent"] == "generate_questions"
-    assert len(result["result"]["questions"]) == 2
+    assert result["reply"] == "已根据资料整理完成。"
+    assert result["intent"] == "search_documents"
+    assert result["steps"] == [{
+        "tool": "search_documents", "args": {"workbook_id": 3, "query": "ReAct"},
+        "ok": True, "summary": "返回 1 项",
+    }]
+    assert result["proposals"] == []
+    assert result["navigate"] is None
 
 
-def test_generate_mindmap_intent(client, auth_headers, registered_user, session, workbook):
+def test_workbook_hint_is_injected_and_iteration_limit_applied(session, registered_user):
     user = _user(session, registered_user)
-    client.post(
-        "/api/knowledge",
-        json={"workbook_id": workbook["id"], "name": "第一章", "level": 0},
-        headers=auth_headers,
+    graph = FakeGraph([AIMessage(content="好的")])
+    agent_service.run_task(session, user, "列出资料", 42, graph=graph)
+    first = graph.input["messages"][0]
+    assert isinstance(first, HumanMessage)
+    assert "当前练习册 ID：42" in first.content
+    assert graph.config == {"recursion_limit": RECURSION_LIMIT}
+    assert RECURSION_LIMIT == 17
+
+
+def test_direct_chat_has_no_fake_steps(session, registered_user):
+    user = _user(session, registered_user)
+    result = agent_service.run_task(
+        session, user, "你好", graph=FakeGraph([AIMessage(content="你好！")])
     )
-    nav = _nav("generate_mindmap", {"workbook_id": workbook["id"]})
-
-    result = agent_service.run_task(session, user, "生成思维导图", navigator_llm=nav)
-    assert result["intent"] == "generate_mindmap"
-    root = result["result"]["mindmap"]["root"]
-    assert root["label"] == workbook["name"]
-    assert len(root["children"]) == 1
-
-
-def test_list_documents_intent(client, auth_headers, registered_user, session, workbook):
-    user = _user(session, registered_user)
-    nav = _nav("list_documents", {"workbook_id": workbook["id"]})
-
-    result = agent_service.run_task(session, user, "列出文档", navigator_llm=nav)
-    assert result["intent"] == "list_documents"
-    assert result["result"]["documents"] == []
-
-
-def test_chat_intent_direct_answer(client, auth_headers, registered_user, session):
-    user = _user(session, registered_user)
-    nav = MockLLM(
-        [
-            {"intent": "chat", "params": {}},  # navigator
-            {"reply": "你好，我是 EStudy 助手"},  # direct_answer（LLM 回答）
-        ]
-    )
-
-    result = agent_service.run_task(session, user, "你好", navigator_llm=nav)
     assert result["intent"] == "chat"
-    assert result["result"]["reply"] == "你好，我是 EStudy 助手"
+    assert result["steps"] == []
+    assert result["result"]["reply"] == "你好！"
 
 
-def test_unknown_intent_falls_back_to_chat(client, auth_headers, registered_user, session):
+def test_failed_tool_step_is_marked_not_ok(session, registered_user):
     user = _user(session, registered_user)
-    nav = _nav("unknown_intent")
+    messages = [
+        AIMessage(content="", tool_calls=[{
+            "name": "get_knowledge_tree", "args": {"workbook_id": 9},
+            "id": "bad", "type": "tool_call",
+        }]),
+        ToolMessage(content="无权访问", tool_call_id="bad", name="get_knowledge_tree",
+                    status="error"),
+        AIMessage(content="无法读取该练习册。"),
+    ]
+    result = agent_service.run_task(session, user, "读取", graph=FakeGraph(messages))
+    assert result["steps"][0]["ok"] is False
 
-    result = agent_service.run_task(session, user, "随便聊聊", navigator_llm=nav)
-    assert result["intent"] == "chat"
 
-
-# ── 重试机制（Review FAIL 回环，最多 2 次）─────────────────
-def test_question_retry_then_success(client, auth_headers, registered_user, session, workbook):
+def test_generate_step_has_structured_summary(session, registered_user):
     user = _user(session, registered_user)
-    nav = _nav("generate_questions", {"workbook_id": workbook["id"], "count": 1})
-    calls = []
-
-    def flaky_generate(params):
-        calls.append(1)
-        if len(calls) < 3:
-            return []
-        return [_choice("1+1=?")]
-
-    result = agent_service.run_task(
-        session,
-        user,
-        "出题",
-        navigator_llm=nav,
-        generate_fn=flaky_generate,
-        review_fn=_pass_review,
-        save_fn=_echo_save,
-    )
-    assert len(result["result"]["questions"]) == 1
-    assert len(calls) == 3  # 初始 + 2 次重试
+    messages = [
+        AIMessage(content="", tool_calls=[{
+            "name": "generate_questions",
+            "args": {"workbook_id": 0, "topic": "ReAct", "count": 10},
+            "id": "generate", "type": "tool_call",
+        }]),
+        ToolMessage(
+            content='{"preview": [{"content": "题目"}], "approved": 10, "saved": false}',
+            tool_call_id="generate",
+            name="generate_questions",
+        ),
+        AIMessage(content="已生成预览。"),
+    ]
+    result = agent_service.run_task(session, user, "出 10 道题", graph=FakeGraph(messages))
+    assert result["steps"][0]["summary"] == "生成并审核通过 10 道题；未保存"
 
 
-def test_question_retry_exhausted(client, auth_headers, registered_user, session, workbook):
+def test_agent_task_records_structured_result(session, registered_user):
     user = _user(session, registered_user)
-    nav = _nav("generate_questions", {"workbook_id": workbook["id"], "count": 1})
-
-    def always_empty(params):
-        return []
-
-    result = agent_service.run_task(
-        session,
-        user,
-        "出题",
-        navigator_llm=nav,
-        generate_fn=always_empty,
-        review_fn=_pass_review,
-        save_fn=_echo_save,
-    )
-    assert result["result"]["questions"] == []
-
-
-# ── API 入口 ─────────────────────────────────────────────
-def test_agent_chat_endpoint(client, auth_headers, monkeypatch):
-    from workflow import graph
-
-    monkeypatch.setattr(graph, "get_llm", lambda: _nav("chat"))
-    resp = client.post("/api/agent/chat", json={"message": "你好"}, headers=auth_headers)
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["intent"] == "chat"
-    assert "reply" in data["result"]
-
-
-# ── 兜底与任务日志 ───────────────────────────────────────
-def test_missing_workbook_id_friendly_error(client, auth_headers, registered_user, session):
-    """LLM 未返回 workbook_id 且无 hint 时，友好 400 而非 KeyError→500（回归 #5）。"""
-    user = _user(session, registered_user)
-    nav = _nav("generate_questions")  # params 无 workbook_id
-
-    with pytest.raises(access.AccessError) as exc_info:
-        agent_service.run_task(
-            session,
-            user,
-            "出题",
-            navigator_llm=nav,
-            generate_fn=lambda params: [_choice("1+1=?")],
-            review_fn=_pass_review,
-            # save_fn 用真实实现 → 触发 workbook_id 兜底校验
-        )
-    assert exc_info.value.status_code == 400
-
-
-def test_agent_task_recorded_failed_on_error(
-    client, auth_headers, registered_user, session, workbook
-):
-    """执行异常的任务应记为 failed，而非恒记 success（回归 #7）。"""
-    user = _user(session, registered_user)
-    nav = _nav("generate_questions", {"workbook_id": workbook["id"]})
-
-    def boom(params):
-        raise RuntimeError("LLM down")
-
-    with pytest.raises(RuntimeError):
-        agent_service.run_task(
-            session, user, "出题", navigator_llm=nav, generate_fn=boom,
-            review_fn=_pass_review, save_fn=_echo_save,
-        )
-
-    task = (
-        session.query(AgentTask)
-        .filter(AgentTask.user_id == user.id)
-        .order_by(AgentTask.id.desc())
-        .first()
-    )
-    assert task is not None
-    assert task.status == AgentTaskStatus.failed
-    assert "LLM down" in (task.error_message or "")
-
-
-def test_agent_task_recorded_success(client, auth_headers, registered_user, session):
-    user = _user(session, registered_user)
-    nav = _nav("chat")
-
-    agent_service.run_task(session, user, "你好", navigator_llm=nav)
-
-    task = (
-        session.query(AgentTask)
-        .filter(AgentTask.user_id == user.id)
-        .order_by(AgentTask.id.desc())
-        .first()
-    )
-    assert task is not None
+    result = agent_service.run_task(session, user, "整理", graph=FakeGraph(_tool_messages()))
+    task = session.query(AgentTask).order_by(AgentTask.id.desc()).first()
     assert task.status == AgentTaskStatus.success
+    stored = json.loads(task.result_data)
+    assert stored["task_id"] == result["task_id"]
+    assert stored["steps"][0]["tool"] == "search_documents"
 
 
-# ── 回归：Navigator 返回字符串参数时真实 generate_fn 不崩溃 ──
-def test_string_params_real_generate_fn(
-    client, auth_headers, registered_user, session, workbook, monkeypatch
-):
-    """LLM JSON 参数为字符串（question_type/count/difficulty）时，
-    真实 generate_fn 曾因 str 无 .value 抛 AttributeError（500）。"""
-    from workflow import graph as graph_mod
-
-    monkeypatch.setattr(
-        graph_mod, "get_llm", lambda: MockLLM([{"questions": [_choice("1+1=?")]}])
-    )
+def test_agent_task_records_failure(session, registered_user):
     user = _user(session, registered_user)
-    nav = _nav(
-        "generate_questions",
-        {
-            "workbook_id": workbook["id"],
-            "question_type": "single_choice",  # 字符串（LLM 实际返回形态）
-            "count": "2",  # 字符串数字
-            "difficulty": "1",
-        },
+    with pytest.raises(RuntimeError, match="model down"):
+        agent_service.run_task(
+            session, user, "整理", graph=FakeGraph(error=RuntimeError("model down"))
+        )
+    task = session.query(AgentTask).order_by(AgentTask.id.desc()).first()
+    assert task.status == AgentTaskStatus.failed
+    assert "model down" in task.error_message
+
+
+def test_generate_tool_requires_semantic_topic():
+    schema = GenerateInput.model_json_schema()
+    assert "topic" in schema["required"]
+    assert "明确的出题主题" in schema["properties"]["topic"]["description"]
+    with pytest.raises(ValidationError):
+        GenerateInput(workbook_id=1, count=10)
+
+
+def test_generate_preview_retries_and_rejects_failed_review(monkeypatch):
+    question = GeneratedQuestion(
+        type="true_false", content="ReAct 包含行动。", answer="true"
     )
+    generate_calls = []
+    review_results = iter([
+        ReviewResult(passed=False), ReviewResult(passed=False), ReviewResult(passed=True)
+    ])
 
-    result = agent_service.run_task(
-        session,
-        user,
-        "出2道题",
-        navigator_llm=nav,
-        review_fn=lambda q, p: True,
-        save_fn=_echo_save,
-    )
-    assert result["intent"] == "generate_questions"
-    assert len(result["result"]["questions"]) == 1
+    def fake_generate(*args, **kwargs):
+        generate_calls.append(1)
+        return [question]
 
-
-def test_invalid_question_type_falls_back(
-    client, auth_headers, registered_user, session, workbook, monkeypatch
-):
-    """LLM 编造非法题型时回退单选，不 500。"""
-    from workflow import graph as graph_mod
-
+    monkeypatch.setattr(generation_service, "generate_batch", fake_generate)
     monkeypatch.setattr(
-        graph_mod, "get_llm", lambda: MockLLM([{"questions": [_choice("1+1=?")]}])
+        generation_service, "review_question", lambda *args, **kwargs: next(review_results)
     )
-    user = _user(session, registered_user)
-    nav = _nav(
-        "generate_questions",
-        {"workbook_id": workbook["id"], "question_type": "essay_x"},
+    result = generation_service.generate_preview(
+        object(), "Agent", "ReAct", question.type, 1, 1, "context"
     )
+    assert result == [question]
+    assert len(generate_calls) == 3
 
-    result = agent_service.run_task(
-        session,
-        user,
-        "出题",
-        navigator_llm=nav,
-        review_fn=lambda q, p: True,
-        save_fn=_echo_save,
-    )
-    assert result["intent"] == "generate_questions"
+
+def test_tools_include_read_layer_and_enforce_permissions(session, registered_user):
+    user = _user(session, registered_user)
+    tools = {tool.name: tool for tool in build_tools(session, user, object())}
+    assert {"search_documents", "get_knowledge_tree", "get_knowledge_detail",
+            "list_documents", "get_questions", "generate_questions"} <= set(tools)
+    with pytest.raises(AccessError):
+        tools["get_knowledge_tree"].invoke({"workbook_id": 999999})
+
+
+def test_agent_chat_endpoint_contract(client, auth_headers, monkeypatch):
+    graph = FakeGraph([AIMessage(content="你好，我是 EStudy 助手")])
+    monkeypatch.setattr(agent_service, "build_graph", lambda db, user: graph)
+    response = client.post("/api/agent/chat", json={"message": "你好"}, headers=auth_headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["reply"]
+    assert data["steps"] == []
+    assert data["proposals"] == []
+    assert data["navigate"] is None
+    assert data["intent"] == "chat"

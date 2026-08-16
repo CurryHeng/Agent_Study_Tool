@@ -160,6 +160,32 @@ def save_questions(
     return saved
 
 
+def generate_preview(
+    llm: LLMService,
+    workbook_name: str,
+    topic: str,
+    question_type: QuestionType,
+    count: int,
+    difficulty: int,
+    context: str,
+) -> list[GeneratedQuestion]:
+    """生成并审核题目预览，沿用专家 Pipeline 的最多 2 次重试且不入库。"""
+    approved: list[GeneratedQuestion] = []
+    for _ in range(MAX_ATTEMPTS):
+        if len(approved) >= count:
+            break
+        batch = generate_batch(
+            llm, workbook_name, topic, question_type, count, difficulty, context
+        )
+        for question in batch:
+            result = review_question(llm, question, topic, context)
+            if result is not None and result.passed:
+                approved.append(question)
+            if len(approved) >= count:
+                break
+    return approved
+
+
 def generate_questions(
     db: Session,
     user: User,
