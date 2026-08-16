@@ -10,6 +10,7 @@ import type {
   Document,
   DocumentDetail,
   DueItem,
+  GenerateResult,
   Knowledge,
   MindMapNode,
   Question,
@@ -59,6 +60,13 @@ export const questionApi = {
   update: (id: number, body: Record<string, unknown>) => api.put<Question>(`/questions/${id}`, body),
   remove: (id: number) => api.del(`/questions/${id}`),
   similar: (id: number) => api.post<SimilarQuestion>(`/questions/${id}/similar`),
+  generate: (body: {
+    workbook_id: number
+    knowledge_id?: number | null
+    type: string
+    count: number
+    difficulty: number
+  }) => api.post<GenerateResult>('/questions/generate', body),
 }
 
 // ── 知识点 ──────────────────────────────────────────────

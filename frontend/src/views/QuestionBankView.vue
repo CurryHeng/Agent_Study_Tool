@@ -4,17 +4,22 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   Check,
   ChevronRight,
+  CircleCheck,
+  CircleX,
   Library,
+  Loader2,
   Pencil,
   Plus,
   Play,
   Search,
   Sparkles,
   Trash2,
+  Wand2,
+  X,
 } from 'lucide-vue-next'
-import { questionApi, workbookApi } from '../api'
+import { knowledgeApi, questionApi, workbookApi } from '../api'
 import { SYSTEM_WORKBOOK_ID } from '../lib/constants'
-import type { Question, SimilarQuestion, Workbook } from '../types'
+import type { GenerateResult, Knowledge, Question, SimilarQuestion, Workbook } from '../types'
 import MarkdownContent from '../components/MarkdownContent.vue'
 
 const route = useRoute()
@@ -29,6 +34,24 @@ const search = ref('')
 const expanded = ref<string | null>(null)
 const editMode = ref(false)
 const selectedIds = ref<Set<number>>(new Set())
+
+const TYPE_LABEL: Record<string, string> = {
+  single_choice: '单选题',
+  multiple_choice: '多选题',
+  true_false: '判断题',
+  fill_blank: '填空题',
+  short_answer: '简答题',
+}
+
+const showGenerate = ref(false)
+const knowledge = ref<Knowledge[]>([])
+const genKnowledgeId = ref<number | null>(null)
+const genType = ref('single_choice')
+const genCount = ref(5)
+const genDifficulty = ref(1)
+const genLoading = ref(false)
+const genError = ref('')
+const genResult = ref<GenerateResult | null>(null)
 
 const builtin: Workbook = {
   id: SYSTEM_WORKBOOK_ID,
@@ -158,9 +181,45 @@ async function saveSimilar(q: Question) {
   await loadQuestions()
 }
 
+async function openGenerate() {
+  showGenerate.value = !showGenerate.value
+  if (showGenerate.value && knowledge.value.length === 0) {
+    try {
+      knowledge.value = await knowledgeApi.list(selected.value)
+    } catch {
+      knowledge.value = []
+    }
+  }
+}
+
+async function runGenerate() {
+  genLoading.value = true
+  genError.value = ''
+  genResult.value = null
+  try {
+    genResult.value = await questionApi.generate({
+      workbook_id: selected.value,
+      knowledge_id: genKnowledgeId.value,
+      type: genType.value,
+      count: genCount.value,
+      difficulty: genDifficulty.value,
+    })
+    await loadQuestions()
+  } catch (e) {
+    genError.value =
+      e instanceof Error ? e.message : '生成失败，请确认已在 backend/.env 配置 DEEPSEEK_API_KEY'
+  } finally {
+    genLoading.value = false
+  }
+}
+
 watch(selected, () => {
   expanded.value = null
   selectedIds.value = new Set()
+  showGenerate.value = false
+  genResult.value = null
+  genKnowledgeId.value = null
+  knowledge.value = []
   loadQuestions()
 })
 onMounted(load)
@@ -203,9 +262,14 @@ onMounted(load)
       >
         {{ wb.name }} ({{ byWorkbook.get(wb.id) || 0 }})
       </button>
-      <button v-if="!isBuiltin" class="btn-primary ml-auto shrink-0 !py-1.5 text-xs" @click="router.push('/questions/add')">
-        <Plus :size="13" /> 添加
-      </button>
+      <div v-if="!isBuiltin" class="ml-auto flex shrink-0 gap-1.5">
+        <button class="btn-secondary !py-1.5 text-xs" @click="openGenerate">
+          <Wand2 :size="13" /> AI 生成
+        </button>
+        <button class="btn-primary !py-1.5 text-xs" @click="router.push('/questions/add')">
+          <Plus :size="13" /> 添加
+        </button>
+      </div>
     </div>
 
     <!-- 操作行 -->
@@ -217,6 +281,77 @@ onMounted(load)
       <button v-else class="btn-primary !py-1.5 text-xs" @click="router.push('/review')">
         <Play :size="13" class="fill-current" /> 开始刷题
       </button>
+    </div>
+
+    <!-- AI 生成题目 -->
+    <div v-if="showGenerate" class="card space-y-4 animate-fade-in">
+      <div class="flex items-center justify-between">
+        <h3 class="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-white">
+          <Wand2 :size="16" class="text-violet-500" /> AI 生成题目
+        </h3>
+        <button class="btn-icon" title="关闭" @click="showGenerate = false">
+          <X :size="14" />
+        </button>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <div>
+          <label class="label">知识点</label>
+          <select v-model="genKnowledgeId" class="input">
+            <option :value="null">整体</option>
+            <option v-for="k in knowledge" :key="k.id" :value="k.id">{{ k.name }}</option>
+          </select>
+        </div>
+        <div>
+          <label class="label">题型</label>
+          <select v-model="genType" class="input">
+            <option v-for="(label, key) in TYPE_LABEL" :key="key" :value="key">{{ label }}</option>
+          </select>
+        </div>
+        <div>
+          <label class="label">数量（1-20）</label>
+          <input v-model.number="genCount" type="number" min="1" max="20" class="input" />
+        </div>
+        <div>
+          <label class="label">难度（1-5）</label>
+          <input v-model.number="genDifficulty" type="number" min="1" max="5" class="input" />
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button class="btn-primary !py-1.5 text-xs" :disabled="genLoading" @click="runGenerate">
+          <Loader2 v-if="genLoading" :size="14" class="animate-spin" />
+          <Wand2 v-else :size="14" />
+          {{ genLoading ? '生成中…' : '生成' }}
+        </button>
+        <p v-if="genError" class="text-sm text-rose-500">{{ genError }}</p>
+      </div>
+
+      <!-- 审题结果 -->
+      <div v-if="genResult" class="space-y-3 border-t border-slate-100 pt-3 dark:border-slate-800">
+        <div class="flex items-center gap-4 text-sm">
+          <span class="flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">
+            <CircleCheck :size="15" /> 通过 {{ genResult.saved.length }} 道
+          </span>
+          <span class="flex items-center gap-1 font-medium text-rose-500">
+            <CircleX :size="15" /> 驳回 {{ genResult.rejected.length }} 道
+          </span>
+        </div>
+
+        <div v-if="genResult.rejected.length" class="space-y-2">
+          <div
+            v-for="(item, i) in genResult.rejected"
+            :key="i"
+            class="rounded-lg border border-rose-200 bg-rose-50/50 p-3 dark:border-rose-500/30 dark:bg-rose-500/10"
+          >
+            <p class="text-xs font-medium text-slate-700 dark:text-slate-200">{{ item.question.content }}</p>
+            <ul class="mt-1 space-y-0.5">
+              <li v-for="(issue, j) in item.review.issues" :key="j" class="text-xs text-rose-500">· {{ issue }}</li>
+            </ul>
+          </div>
+        </div>
+        <p v-else class="text-xs text-slate-400">全部通过，无驳回。</p>
+      </div>
     </div>
 
     <p v-if="filtered.length === 0" class="card py-12 text-center text-sm text-slate-400 dark:text-slate-500">
