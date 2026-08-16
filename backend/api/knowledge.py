@@ -14,10 +14,12 @@ router = APIRouter(prefix="/api/knowledge", tags=["knowledge"])
 @router.get("", response_model=list[KnowledgeOut])
 def list_knowledge(
     workbook_id: int,
+    page: int | None = None,
+    page_size: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list:
-    return knowledge_service.list_knowledge(db, user, workbook_id)
+    return knowledge_service.list_knowledge(db, user, workbook_id, page, page_size)
 
 
 @router.post("", status_code=201, response_model=KnowledgeOut)

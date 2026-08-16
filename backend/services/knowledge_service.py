@@ -7,9 +7,16 @@ from schemas.knowledge import KnowledgeCreate, KnowledgeUpdate
 from services import access
 
 
-def list_knowledge(db: Session, user: User, workbook_id: int) -> list[Knowledge]:
+def list_knowledge(
+    db: Session, user: User, workbook_id: int,
+    page: int | None = None, page_size: int | None = None,
+) -> list[Knowledge]:
     access.get_visible_workbook(db, user, workbook_id)
-    return knowledge_repository.list_by_workbook(db, workbook_id)
+    nodes = knowledge_repository.list_by_workbook(db, workbook_id)
+    if page is not None and page_size is not None and page_size > 0:
+        start = (page - 1) * page_size
+        nodes = nodes[start : start + page_size]
+    return nodes
 
 
 def create_knowledge(db: Session, user: User, data: KnowledgeCreate) -> Knowledge:

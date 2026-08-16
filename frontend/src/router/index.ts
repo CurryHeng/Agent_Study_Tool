@@ -10,6 +10,7 @@ import WrongBookView from '../views/WrongBookView.vue'
 import MindMapView from '../views/MindMapView.vue'
 import SettingsView from '../views/SettingsView.vue'
 import StatsView from '../views/StatsView.vue'
+import HistoryView from '../views/HistoryView.vue'
 import AgentChatView from '../views/AgentChatView.vue'
 
 const router = createRouter({
@@ -24,6 +25,7 @@ const router = createRouter({
     { path: '/wrong', component: WrongBookView },
     { path: '/mindmap', component: MindMapView },
     { path: '/stats', component: StatsView },
+    { path: '/history', component: HistoryView },
     { path: '/assistant', component: AgentChatView },
     { path: '/settings', component: SettingsView },
   ],

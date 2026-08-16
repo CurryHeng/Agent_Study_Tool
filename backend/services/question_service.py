@@ -38,7 +38,8 @@ def _knowledge_name(db: Session, question) -> str | None:
 
 
 def list_questions(
-    db: Session, user: User, workbook_id: int | None = None
+    db: Session, user: User, workbook_id: int | None = None,
+    page: int | None = None, page_size: int | None = None,
 ) -> list[QuestionOut]:
     visible_ids = access.visible_workbook_ids(db, user)
     if workbook_id is not None:
@@ -58,7 +59,7 @@ def list_questions(
     # 批量回填知识点名称（与 /review/due、/wrong-records 行为一致）
     knowledge_ids = [q.knowledge_id for q in questions if q.knowledge_id is not None]
     knowledge_map = {k.id: k for k in knowledge_repository.get_by_ids(db, knowledge_ids)}
-    return [
+    result = [
         to_question_out(
             q,
             option_map.get(q.id, []),
@@ -68,6 +69,10 @@ def list_questions(
         )
         for q in questions
     ]
+    if page is not None and page_size is not None and page_size > 0:
+        start = (page - 1) * page_size
+        result = result[start : start + page_size]
+    return result
 
 
 def create_question(db: Session, user: User, data: QuestionCreate) -> QuestionOut:

@@ -68,6 +68,14 @@ def _isolate_llm(monkeypatch):
     monkeypatch.setattr(settings, "qwen_api_key", "")
 
 
+@pytest.fixture(autouse=True)
+def _isolate_ai_settings(monkeypatch, tmp_path):
+    """隔离 AI 供应商配置文件，避免本地 ai_settings.json 影响测试。"""
+    from services import ai_settings
+
+    monkeypatch.setattr(ai_settings, "_SETTINGS_PATH", tmp_path / "ai_settings.json")
+
+
 @pytest.fixture()
 def engine(tmp_path):
     db_file = tmp_path / "test.db"

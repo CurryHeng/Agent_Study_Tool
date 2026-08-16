@@ -9,6 +9,7 @@ from api.agent import router as agent_router
 from api.auth import router as auth_router
 from api.conversations import router as conversations_router
 from api.documents import router as documents_router
+from api.history import router as history_router
 from api.knowledge import router as knowledge_router
 from api.questions import router as questions_router
 from api.rag import router as rag_router
@@ -35,6 +36,7 @@ app.include_router(workbooks_router)
 app.include_router(questions_router)
 app.include_router(knowledge_router)
 app.include_router(documents_router)
+app.include_router(history_router)
 app.include_router(rag_router)
 app.include_router(review_router)
 app.include_router(agent_router)

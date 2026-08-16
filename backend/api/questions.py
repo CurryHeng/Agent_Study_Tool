@@ -15,10 +15,12 @@ router = APIRouter(prefix="/api/questions", tags=["questions"])
 @router.get("", response_model=list[QuestionOut])
 def list_questions(
     workbook_id: int | None = None,
+    page: int | None = None,
+    page_size: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list:
-    return question_service.list_questions(db, user, workbook_id)
+    return question_service.list_questions(db, user, workbook_id, page, page_size)
 
 
 @router.post("", status_code=201, response_model=QuestionOut)

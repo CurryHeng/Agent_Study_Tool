@@ -278,6 +278,15 @@ export interface ConversationMessage {
   created_at: string
 }
 
+// ── 学习活动时间线（#59） ──────────────────────────────
+export interface HistoryEvent {
+  id: string
+  type: 'upload' | 'generate' | 'answer' | 'wrong' | 'review'
+  title: string
+  detail?: string | null
+  created_at: string
+}
+
 // ── AI 供应商设置（设置页） ─────────────────────────────
 export interface AiProviderConfig {
   provider: string

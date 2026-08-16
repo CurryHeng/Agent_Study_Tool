@@ -6,6 +6,7 @@ import type {
   AiSettings,
   Conversation,
   ConversationMessage,
+  HistoryEvent,
   AnswerResult,
   Document,
   DocumentDetail,
@@ -53,8 +54,14 @@ export const workbookApi = {
 
 // ── 题库 ────────────────────────────────────────────────
 export const questionApi = {
-  list: (workbookId?: number) =>
-    api.get<Question[]>(`/questions${workbookId != null ? `?workbook_id=${workbookId}` : ''}`),
+  list: (options: { workbookId?: number | null; page?: number; pageSize?: number } = {}) => {
+    const params = new URLSearchParams()
+    if (options.workbookId != null) params.set('workbook_id', String(options.workbookId))
+    if (options.page != null) params.set('page', String(options.page))
+    if (options.pageSize != null) params.set('page_size', String(options.pageSize))
+    const qs = params.toString()
+    return api.get<Question[]>(`/questions${qs ? `?${qs}` : ''}`)
+  },
   get: (id: number) => api.get<Question>(`/questions/${id}`),
   create: (body: Record<string, unknown>) => api.post<Question>('/questions', body),
   update: (id: number, body: Record<string, unknown>) => api.put<Question>(`/questions/${id}`, body),
@@ -71,7 +78,12 @@ export const questionApi = {
 
 // ── 知识点 ──────────────────────────────────────────────
 export const knowledgeApi = {
-  list: (workbookId: number) => api.get<Knowledge[]>(`/knowledge?workbook_id=${workbookId}`),
+  list: (workbookId: number, page?: number, pageSize?: number) => {
+    const params = new URLSearchParams({ workbook_id: String(workbookId) })
+    if (page != null) params.set('page', String(page))
+    if (pageSize != null) params.set('page_size', String(pageSize))
+    return api.get<Knowledge[]>(`/knowledge?${params.toString()}`)
+  },
 }
 
 // ── 刷题 ────────────────────────────────────────────────
@@ -85,8 +97,20 @@ export const reviewApi = {
 
 // ── 错题本 ──────────────────────────────────────────────
 export const wrongRecordApi = {
-  list: (knowledgeId?: number | null) =>
-    api.get<WrongRecord[]>(`/wrong-records${knowledgeId != null ? `?knowledge_id=${knowledgeId}` : ''}`),
+  list: (options: {
+    knowledgeId?: number | null
+    questionType?: string | null
+    page?: number
+    pageSize?: number
+  } = {}) => {
+    const params = new URLSearchParams()
+    if (options.knowledgeId != null) params.set('knowledge_id', String(options.knowledgeId))
+    if (options.questionType) params.set('question_type', options.questionType)
+    if (options.page != null) params.set('page', String(options.page))
+    if (options.pageSize != null) params.set('page_size', String(options.pageSize))
+    const qs = params.toString()
+    return api.get<WrongRecord[]>(`/wrong-records${qs ? `?${qs}` : ''}`)
+  },
   update: (id: number, body: Record<string, unknown>) => api.put<WrongRecord>(`/wrong-records/${id}`, body),
 }
 
@@ -113,6 +137,11 @@ export const documentApi = {
 // ── 学习统计 ────────────────────────────────────────────
 export const statsApi = {
   get: () => api.get<Stats>('/stats'),
+}
+
+// ── 学习活动时间线（#59） ─────────────────────────────────
+export const historyApi = {
+  list: (limit = 100) => api.get<HistoryEvent[]>(`/history?limit=${limit}`),
 }
 
 // ── AI 供应商设置 ────────────────────────────────────────

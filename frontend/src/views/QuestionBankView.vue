@@ -27,6 +27,8 @@ const router = useRouter()
 const workbooks = ref<Workbook[]>([])
 const selected = ref<number>(SYSTEM_WORKBOOK_ID)
 const questions = ref<Question[]>([])
+const page = ref(1)
+const pageSize = ref(10)
 const similarMap = ref<Record<number, SimilarQuestion>>({})
 const loadingSimilar = ref<number | null>(null)
 
@@ -106,9 +108,25 @@ async function load() {
 }
 
 async function loadQuestions() {
-  questions.value = await questionApi.list()
+  questions.value = await questionApi.list({
+    workbookId: selected.value,
+    page: page.value,
+    pageSize: pageSize.value,
+  })
   similarMap.value = {}
   selectedIds.value = new Set()
+}
+
+function nextPage() {
+  if (questions.value.length < pageSize.value) return
+  page.value++
+  loadQuestions()
+}
+
+function prevPage() {
+  if (page.value <= 1) return
+  page.value--
+  loadQuestions()
 }
 
 function toggleSelect(id: number) {
@@ -214,6 +232,7 @@ async function runGenerate() {
 }
 
 watch(selected, () => {
+  page.value = 1
   expanded.value = null
   selectedIds.value = new Set()
   showGenerate.value = false
@@ -435,6 +454,13 @@ onMounted(load)
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- 分页 -->
+    <div class="mt-4 flex items-center justify-center gap-2">
+      <button class="btn-secondary !py-1.5 text-xs" :disabled="page <= 1" @click="prevPage">上一页</button>
+      <span class="text-xs text-slate-400">第 {{ page }} 页</span>
+      <button class="btn-secondary !py-1.5 text-xs" :disabled="questions.length < pageSize" @click="nextPage">下一页</button>
     </div>
   </div>
 </template>

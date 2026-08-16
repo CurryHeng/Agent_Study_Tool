@@ -29,7 +29,12 @@ def _fetch_knowledge(db: Session, question: Question | None) -> Knowledge | None
 
 
 def list_wrong_records(
-    db: Session, user: User, knowledge_id: int | None = None
+    db: Session,
+    user: User,
+    knowledge_id: int | None = None,
+    question_type: str | None = None,
+    page: int | None = None,
+    page_size: int | None = None,
 ) -> list[WrongRecordOut]:
     records = wrong_record_repository.list_by_user(db, user.id)
     if not records:
@@ -44,6 +49,10 @@ def list_wrong_records(
         questions = {
             qid: q for qid, q in questions.items() if q.knowledge_id == knowledge_id
         }
+    if question_type is not None:
+        questions = {
+            qid: q for qid, q in questions.items() if q.type.value == question_type
+        }
     knowledge_ids = [q.knowledge_id for q in questions.values() if q.knowledge_id is not None]
     knowledge_map = {k.id: k for k in knowledge_repository.get_by_ids(db, knowledge_ids)}
     result: list[WrongRecordOut] = []
@@ -52,6 +61,9 @@ def list_wrong_records(
         if question is None:
             continue
         result.append(_to_out(r, question, knowledge_map.get(question.knowledge_id)))
+    if page is not None and page_size is not None and page_size > 0:
+        start = (page - 1) * page_size
+        result = result[start : start + page_size]
     return result
 
 

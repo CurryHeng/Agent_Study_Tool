@@ -67,7 +67,7 @@ interface SessionSnapshot {
   total: number
   results: (boolean | null)[]
   current: {
-    selected: string | null
+    selected: string[]
     textAnswer: string
     revealed: boolean
     selfAssessed: boolean | null
@@ -192,7 +192,7 @@ async function start() {
       : new Array(due.value.length).fill(null)
     const cur = resume.value.current
     if (cur) {
-      selected.value = cur.selected
+      selected.value = cur.selected ?? []
       textAnswer.value = cur.textAnswer ?? ''
       revealed.value = cur.revealed ?? false
       selfAssessed.value = cur.selfAssessed ?? null

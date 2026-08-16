@@ -22,16 +22,32 @@ const knowledgeFilterId = computed(() => {
   return raw != null ? Number(raw) : null
 })
 const typeFilter = ref('all')
+const page = ref(1)
+const pageSize = ref(10)
 const editingId = ref<number | null>(null)
 const editReason = ref('')
 
-const filtered = computed(() => {
-  if (typeFilter.value === 'all') return records.value
-  return records.value.filter((r) => r.question_type === typeFilter.value)
-})
+const filtered = computed(() => records.value)
 
 async function load() {
-  records.value = await wrongRecordApi.list(knowledgeFilterId.value)
+  records.value = await wrongRecordApi.list({
+    knowledgeId: knowledgeFilterId.value,
+    questionType: typeFilter.value === 'all' ? null : typeFilter.value,
+    page: page.value,
+    pageSize: pageSize.value,
+  })
+}
+
+function nextPage() {
+  if (records.value.length < pageSize.value) return
+  page.value++
+  load()
+}
+
+function prevPage() {
+  if (page.value <= 1) return
+  page.value--
+  load()
 }
 
 function startEdit(r: WrongRecord) {
@@ -51,7 +67,8 @@ async function saveEdit(r: WrongRecord) {
 }
 
 onMounted(load)
-watch(() => route.query.knowledge_id, load)
+watch(() => route.query.knowledge_id, () => { page.value = 1; load() })
+watch(typeFilter, () => { page.value = 1; load() })
 </script>
 
 <template>
@@ -122,6 +139,13 @@ watch(() => route.query.knowledge_id, load)
           </button>
         </div>
       </div>
+    </div>
+
+    <!-- 分页 -->
+    <div class="mt-4 flex items-center justify-center gap-2">
+      <button class="btn-secondary !py-1.5 text-xs" :disabled="page <= 1" @click="prevPage">上一页</button>
+      <span class="text-xs text-slate-400">第 {{ page }} 页</span>
+      <button class="btn-secondary !py-1.5 text-xs" :disabled="records.length < pageSize" @click="nextPage">下一页</button>
     </div>
   </div>
 </template>
