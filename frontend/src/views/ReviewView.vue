@@ -44,12 +44,14 @@ const error = ref('')
 const finished = ref(false)
 
 // 当前题作答状态
-const selected = ref<string | null>(null)
+const selected = ref<string[]>([]) // 选中的选项（多选题多个）
 const textAnswer = ref('')
 const revealed = ref(false) // 填空/简答已揭晓答案
+const submitted = ref(false) // 选择题已上交（显示对错与答案，等待评估掌握程度）
 const selfAssessed = ref<boolean | null>(null) // 揭晓后自评
 const pendingRating = ref<string | null>(null) // 选了 again/hard 等待填错因
 const result = ref<AnswerResult | null>(null)
+const submitting = ref(false) // 防止提交期间重复作答
 const wrongReasonInput = ref('')
 const wrongAnswerInput = ref('')
 
@@ -62,6 +64,10 @@ const resume = ref<{ mode: Mode; index: number; total: number } | null>(null)
 
 const current = computed(() => due.value[index.value])
 const isChoice = computed(() => (current.value?.question.options.length ?? 0) > 0)
+const isMultiple = computed(() => current.value?.question.type === 'multiple_choice')
+const isShortAnswer = computed(() => current.value?.question.type === 'short_answer')
+const selectedAnswer = computed(() => selected.value.join(''))
+const revealedChoice = computed(() => submitted.value || rated.value)
 const currentMode = computed(() => MODES.find((m) => m.key === mode.value)!)
 const rated = computed(() => result.value != null)
 const progress = computed(() =>
@@ -73,28 +79,46 @@ const allRated = computed(
 
 const localCorrect = computed(() => {
   const q = current.value?.question
-  if (!q || !isChoice.value || selected.value == null) return null
-  return gradeQuestion(q, selected.value)
+  if (!q || isShortAnswer.value) return null
+  if (isChoice.value) {
+    if (selected.value.length === 0) return null
+    return gradeQuestion(q, selectedAnswer.value)
+  }
+  if (textAnswer.value.trim() === '') return null
+  return gradeQuestion(q, textAnswer.value)
 })
 
 // 允许的评分项（按对错过滤，避免"答错却评简单"）
 const allowedRatings = computed<string[] | undefined>(() => {
   if (rated.value || mode.value === 'strict') return undefined
-  if (isChoice.value) {
-    if (localCorrect.value === true) return ['good', 'easy']
-    if (localCorrect.value === false) return ['again', 'hard']
+  if (isShortAnswer.value) {
+    if (!revealed.value) return undefined
+    if (selfAssessed.value === true) return ['good', 'easy']
+    if (selfAssessed.value === false) return ['again', 'hard']
     return undefined
   }
-  if (!revealed.value) return undefined
-  if (selfAssessed.value === true) return ['good', 'easy']
-  if (selfAssessed.value === false) return ['again', 'hard']
+  // 自动判题（选择/填空/判断）
+  if (!submitted.value) return undefined
+  if (localCorrect.value === true) return ['good', 'easy']
+  if (localCorrect.value === false) return ['again', 'hard']
   return undefined
 })
 
 const canRate = computed(() => {
   if (rated.value || mode.value === 'strict') return false
-  if (isChoice.value) return localCorrect.value != null
-  return revealed.value && selfAssessed.value != null
+  if (isShortAnswer.value) return revealed.value && selfAssessed.value != null
+  return submitted.value && localCorrect.value != null
+})
+
+// 是否显示"上交/提交"按钮（选择题/填空/判断）
+const canHandIn = computed(() => {
+  if (revealedChoice.value || isShortAnswer.value) return false
+  if (mode.value === 'strict') {
+    if (isChoice.value) return isMultiple.value && selected.value.length > 0
+    return textAnswer.value.trim() !== ''
+  }
+  if (isChoice.value) return selected.value.length > 0
+  return textAnswer.value.trim() !== ''
 })
 
 const correctCount = computed(() => results.value.filter((r) => r === true).length)
@@ -158,12 +182,14 @@ async function toggleFavorite() {
 }
 
 function resetCard() {
-  selected.value = null
+  selected.value = []
   textAnswer.value = ''
   revealed.value = false
+  submitted.value = false
   selfAssessed.value = null
   pendingRating.value = null
   result.value = null
+  submitting.value = false
   wrongReasonInput.value = ''
   wrongAnswerInput.value = ''
   remaining.value = 300
@@ -184,25 +210,92 @@ function stopTimer() {
 }
 
 function choose(optionKey: string) {
-  if (rated.value) return
-  selected.value = optionKey
-  if (mode.value === 'strict') submit()
+  if (submitted.value || rated.value || submitting.value) return
+  if (isMultiple.value) {
+    const i = selected.value.indexOf(optionKey)
+    if (i >= 0) selected.value.splice(i, 1)
+    else selected.value.push(optionKey)
+  } else {
+    selected.value = [optionKey]
+    if (mode.value === 'strict') submit()
+  }
+}
+
+function handIn() {
+  if (mode.value === 'strict') {
+    submit()
+  } else {
+    submitted.value = true
+  }
 }
 
 async function submit(rating?: string, wrongReason?: string) {
-  if (rated.value) return
+  if (rated.value || submitting.value) return
+  submitting.value = true
   stopTimer()
-  const q = current.value.question
-  const answer = isChoice.value ? selected.value : textAnswer.value
-  const r = await reviewApi.answer(q.id, {
-    user_answer: answer,
-    mode: mode.value,
-    ...(rating ? { rating } : {}),
-    ...(wrongReason ? { wrong_reason: wrongReason } : {}),
-  })
-  result.value = r
-  const ok = r.is_correct === null ? r.rating === 'good' || r.rating === 'easy' : r.is_correct
-  results.value[index.value] = ok
+  try {
+    const q = current.value.question
+    const answer = isChoice.value ? selectedAnswer.value : textAnswer.value
+    const r = await reviewApi.answer(q.id, {
+      user_answer: answer,
+      mode: mode.value,
+      ...(rating ? { rating } : {}),
+      ...(wrongReason ? { wrong_reason: wrongReason } : {}),
+    })
+    result.value = r
+    const ok = r.is_correct === null ? r.rating === 'good' || r.rating === 'easy' : r.is_correct
+    results.value[index.value] = ok
+  } finally {
+    submitting.value = false
+  }
+}
+
+function isSelectedKey(key: string): boolean {
+  return selected.value.includes(key)
+}
+
+function isCorrectOption(key: string): boolean {
+  const ans = (current.value?.question.answer || '').toUpperCase()
+  return ans.includes(key.toUpperCase())
+}
+
+function optionClass(key: string): string {
+  const green = 'border-emerald-400 bg-emerald-50 dark:border-emerald-500 dark:bg-emerald-500/15'
+  const red = 'border-rose-400 bg-rose-50 dark:border-rose-500 dark:bg-rose-500/15'
+  if (revealedChoice.value) {
+    if (isCorrectOption(key)) {
+      // 多选里正确但未选 = 漏选，标红；否则（正确选中 / 单选正确答案）标绿
+      if (isMultiple.value && !isSelectedKey(key)) return red
+      return green
+    }
+    if (isSelectedKey(key) && !isMultiple.value) return red // 单选错选标红；多选错选标灰
+    return 'border-slate-200 dark:border-slate-700'
+  }
+  if (isSelectedKey(key)) return green
+  return 'border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/40 dark:border-slate-700 dark:hover:border-emerald-600 dark:hover:bg-slate-700/40'
+}
+
+function optionBadgeClass(key: string): string {
+  if (revealedChoice.value) {
+    if (isCorrectOption(key)) {
+      if (isMultiple.value && !isSelectedKey(key)) return 'bg-rose-500 text-white' // 漏选
+      return 'bg-emerald-500 text-white'
+    }
+    if (isSelectedKey(key) && !isMultiple.value) return 'bg-rose-500 text-white' // 单选错选
+    return 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300'
+  }
+  if (isSelectedKey(key)) return 'bg-emerald-500 text-white'
+  return 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300'
+}
+
+function optionMark(key: string): 'correct' | 'wrong' | null {
+  if (!revealedChoice.value) return null
+  if (isCorrectOption(key)) {
+    if (isMultiple.value && !isSelectedKey(key)) return 'wrong' // 漏选 → 红叉
+    return 'correct'
+  }
+  if (isSelectedKey(key) && !isMultiple.value) return 'wrong' // 单选错选 → 红叉
+  return null // 多选错选 → 无标记（灰色弱化）
 }
 
 function onRate(rating: string) {
@@ -401,49 +494,66 @@ onBeforeUnmount(stopTimer)
               v-for="o in current.question.options"
               :key="o.id"
               class="flex w-full items-center gap-3 rounded-xl border-2 px-4 py-3 text-left text-sm transition dark:bg-slate-800"
-              :class="
-                result && o.option_key === current.question.answer
-                  ? 'border-emerald-400 bg-emerald-50 dark:border-emerald-500 dark:bg-emerald-500/15'
-                  : result && o.option_key === selected
-                    ? 'border-rose-400 bg-rose-50 dark:border-rose-500 dark:bg-rose-500/15'
-                    : !result && selected === o.option_key
-                      ? 'border-emerald-400 bg-emerald-50 dark:border-emerald-500 dark:bg-emerald-500/15'
-                      : 'border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/40 dark:border-slate-700 dark:hover:border-emerald-600 dark:hover:bg-slate-700/40'
-              "
-              :disabled="result != null"
+              :class="optionClass(o.option_key)"
+              :disabled="revealedChoice || submitting"
               @click="choose(o.option_key)"
             >
               <span
                 class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold"
-                :class="
-                  result && o.option_key === current.question.answer
-                    ? 'bg-emerald-500 text-white'
-                    : result && o.option_key === selected
-                      ? 'bg-rose-500 text-white'
-                      : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300'
-                "
+                :class="optionBadgeClass(o.option_key)"
               >
                 {{ o.option_key }}
               </span>
               <span class="leading-relaxed">{{ o.content }}</span>
-              <span v-if="result && o.option_key === current.question.answer" class="ml-auto shrink-0">
+              <span v-if="optionMark(o.option_key) === 'correct'" class="ml-auto shrink-0">
                 <Check :size="16" class="text-emerald-500" />
               </span>
-              <span v-else-if="result && o.option_key === selected" class="ml-auto shrink-0">
+              <span v-else-if="optionMark(o.option_key) === 'wrong'" class="ml-auto shrink-0">
                 <X :size="16" class="text-rose-400" />
               </span>
             </button>
           </div>
+
+          <!-- 上交 / 提交 -->
+          <button v-if="canHandIn" class="btn-primary mt-4 w-full" @click="handIn">
+            提交
+          </button>
         </template>
 
-        <!-- 填空/简答 -->
+        <!-- 填空/判断（自动判题）/ 简答 -->
         <template v-else>
-          <input v-model="textAnswer" class="input mb-3" placeholder="填写答案" :disabled="revealed || rated" />
-          <button v-if="!revealed && !rated" class="btn-primary w-full" @click="revealed = true">揭晓答案</button>
+          <input
+            v-model="textAnswer"
+            class="input mb-3"
+            placeholder="填写答案"
+            :disabled="revealed || submitted || rated"
+          />
+          <button v-if="!isShortAnswer && canHandIn" class="btn-primary w-full" @click="handIn">
+            提交
+          </button>
+          <button v-if="isShortAnswer && !revealed && !rated" class="btn-primary w-full" @click="revealed = true">
+            揭晓答案
+          </button>
         </template>
 
-        <!-- 已揭晓答案 -->
-        <div v-if="revealed && !isChoice" class="mt-4 space-y-3 animate-slide-up">
+        <!-- 上交后的本地结果（自动判题：选择/填空/判断，评估掌握程度之前） -->
+        <div v-if="submitted && !rated" class="mt-4 animate-fade-in">
+          <p
+            class="flex items-center gap-1.5 text-sm font-medium"
+            :class="localCorrect ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400'"
+          >
+            <CheckCircle2 v-if="localCorrect" :size="16" />
+            <XCircle v-else :size="16" />
+            {{ localCorrect ? '回答正确' : '回答错误' }}
+            <span class="text-slate-400">（正确答案：{{ current.question.answer }}）</span>
+          </p>
+          <div v-if="current.question.analysis" class="mt-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/60">
+            <MarkdownContent :content="current.question.analysis" />
+          </div>
+        </div>
+
+        <!-- 已揭晓答案（简答：自评） -->
+        <div v-if="revealed && isShortAnswer" class="mt-4 space-y-3 animate-slide-up">
           <p class="text-sm font-medium text-emerald-600 dark:text-emerald-400">
             正确答案：{{ current.question.answer }}
           </p>
@@ -456,8 +566,8 @@ onBeforeUnmount(stopTimer)
           </div>
         </div>
 
-        <!-- 结果反馈 -->
-        <div v-if="result" class="mt-4 animate-fade-in">
+        <!-- 结果反馈（简答评分后、或严格模式自动判分后，由后端返回） -->
+        <div v-if="result && (isShortAnswer || mode === 'strict')" class="mt-4 animate-fade-in">
           <p
             class="flex items-center gap-1.5 text-sm font-medium"
             :class="result.is_correct ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400'"
@@ -465,7 +575,7 @@ onBeforeUnmount(stopTimer)
             <CheckCircle2 v-if="result.is_correct" :size="16" />
             <XCircle v-else-if="result.is_correct === false" :size="16" />
             {{ result.is_correct === null ? '已记录' : result.is_correct ? '回答正确' : '回答错误' }}
-            <span v-if="isChoice" class="text-slate-400">（正确答案：{{ result.correct_answer }}）</span>
+            <span v-if="!isShortAnswer" class="text-slate-400">（正确答案：{{ result.correct_answer }}）</span>
           </p>
           <div v-if="result.analysis" class="mt-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/60">
             <MarkdownContent :content="result.analysis" />
