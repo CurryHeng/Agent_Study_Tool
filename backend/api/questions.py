@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from api.deps import get_current_user
 from db.session import get_db
 from models import User
-from schemas.generation import GeneratedQuestion, GenerateRequest
+from schemas.generation import GeneratedQuestion, GenerateRequest, GenerateResult
 from schemas.question import QuestionCreate, QuestionOut, QuestionUpdate
 from services import generation_service, question_service, rag_service
 
@@ -32,14 +32,14 @@ def create_question(
     return out
 
 
-@router.post("/generate", response_model=list[QuestionOut])
+@router.post("/generate", response_model=GenerateResult)
 def generate_questions(
     body: GenerateRequest,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     context = rag_service.build_context(db, user, body.workbook_id, body.knowledge_id)
-    out = generation_service.generate_questions(
+    out = generation_service.generate_questions_with_review(
         db,
         user,
         body.workbook_id,

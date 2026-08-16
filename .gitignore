@@ -28,6 +28,9 @@ Desktop.ini
 # Backend runtime data（数据库 / 上传文件 / 向量库，不入库）
 backend/data/
 
+# 旧 React/Express 后端残留（本地遗留，不入库）
+server/
+
 # Python
 .venv/
 __pycache__/

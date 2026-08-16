@@ -114,6 +114,31 @@ export interface SimilarQuestion {
   options: { option_key: string; content: string; sort_order: number }[]
 }
 
+export interface GeneratedQuestion {
+  type: QuestionType
+  content: string
+  answer: string
+  analysis: string | null
+  difficulty: number
+  options: { option_key: string; content: string; sort_order: number }[]
+}
+
+export interface ReviewResult {
+  passed: boolean
+  score: number
+  issues: string[]
+}
+
+export interface RejectedQuestion {
+  question: GeneratedQuestion
+  review: ReviewResult
+}
+
+export interface GenerateResult {
+  saved: Question[]
+  rejected: RejectedQuestion[]
+}
+
 export interface Document {
   id: number
   workbook_id: number

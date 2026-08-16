@@ -165,6 +165,27 @@ def test_review_fail_retries_then_empty(client, auth_headers, registered_user, s
     assert mock.calls == 6  # 3 次生成 + 3 次审核
 
 
+def test_generate_with_review_reports_rejected(client, auth_headers, registered_user, session):
+    user = session.get(User, registered_user["user"]["id"])
+    wb = client.post("/api/workbooks", json={"name": "A"}, headers=auth_headers).json()
+
+    mock = MockLLM(
+        [
+            {"questions": [_valid_choice("1+1=?"), _valid_choice("错题", "C")]},
+            {"passed": True, "score": 0.9, "issues": []},
+            {"passed": False, "score": 0.2, "issues": ["答案错误"]},
+        ]
+    )
+    result = generation_service.generate_questions_with_review(
+        session, user, wb["id"], QuestionType.single_choice, 2, llm=mock
+    )
+    assert len(result.saved) == 1
+    assert len(result.rejected) == 1
+    assert result.rejected[0].review.passed is False
+    assert result.rejected[0].review.issues == ["答案错误"]
+    assert result.rejected[0].question.content == "错题"
+
+
 def test_type_mismatch_dropped(client, auth_headers, registered_user, session):
     user = session.get(User, registered_user["user"]["id"])
     wb = client.post("/api/workbooks", json={"name": "A"}, headers=auth_headers).json()

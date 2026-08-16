@@ -2,6 +2,7 @@
 from pydantic import BaseModel, Field
 
 from models.enums import QuestionType
+from schemas.question import QuestionOut
 
 
 class GeneratedOption(BaseModel):
@@ -35,3 +36,17 @@ class GenerateRequest(BaseModel):
     type: QuestionType = QuestionType.single_choice
     count: int = Field(default=5, ge=1, le=20)
     difficulty: int = Field(default=1, ge=1, le=5)
+
+
+class RejectedQuestion(BaseModel):
+    """一道被审题驳回的题目及其原因（未入库，无 id）。"""
+
+    question: GeneratedQuestion
+    review: ReviewResult
+
+
+class GenerateResult(BaseModel):
+    """出题结果：入库的通过题目 + 被驳回题目及原因（供前端展示审题结果）。"""
+
+    saved: list[QuestionOut] = []
+    rejected: list[RejectedQuestion] = []

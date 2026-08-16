@@ -14,7 +14,9 @@ from models.enums import QuestionSource, QuestionStatus, QuestionType
 from repositories import knowledge_repository, question_option_repository, question_repository
 from schemas.generation import (
     GeneratedQuestion,
+    GenerateResult,
     GenerationOutput,
+    RejectedQuestion,
     ReviewResult,
 )
 from schemas.question import QuestionOut, to_question_out
@@ -186,6 +188,71 @@ def generate_preview(
     return approved
 
 
+def _generate_and_review(
+    llm: LLMService,
+    workbook_name: str,
+    knowledge_name: str,
+    question_type: QuestionType,
+    count: int,
+    difficulty: int,
+    context: str,
+) -> tuple[list[GeneratedQuestion], list[tuple[GeneratedQuestion, ReviewResult]]]:
+    """生成 → 审题 主循环（最多 MAX_ATTEMPTS 轮）。
+
+    返回 (approved, rejected)：approved 为通过审题的题目；rejected 为
+    (题目, 审题结果) 的驳回项，含未通过原因，供前端展示审题结果。
+    """
+    approved: list[GeneratedQuestion] = []
+    rejected: list[tuple[GeneratedQuestion, ReviewResult]] = []
+    for _ in range(MAX_ATTEMPTS):
+        if len(approved) >= count:
+            break
+        batch = generate_batch(
+            llm, workbook_name, knowledge_name, question_type, count, difficulty, context
+        )
+        for question in batch:
+            if len(approved) >= count:
+                break
+            result = review_question(llm, question, knowledge_name, context)
+            if result is not None and result.passed:
+                approved.append(question)
+            else:
+                review = result or ReviewResult(
+                    passed=False, score=0.0, issues=["审题结果解析失败"]
+                )
+                rejected.append((question, review))
+    return approved, rejected
+
+
+def generate_questions_with_review(
+    db: Session,
+    user: User,
+    workbook_id: int,
+    question_type: QuestionType,
+    count: int,
+    knowledge_id: int | None = None,
+    difficulty: int = 1,
+    context: str = "",
+    llm: LLMService | None = None,
+) -> GenerateResult:
+    """生成 → 审题 → 入库，返回入库题目与驳回原因（供 /questions/generate 展示审题结果）。"""
+    workbook = access.get_owned_workbook(db, user, workbook_id)
+    llm = llm or get_llm()
+    knowledge_name = resolve_knowledge_name(db, knowledge_id)
+
+    approved, rejected = _generate_and_review(
+        llm, workbook.name, knowledge_name, question_type, count, difficulty, context
+    )
+    saved = save_questions(db, workbook_id, knowledge_id, approved)
+    return GenerateResult(
+        saved=saved,
+        rejected=[
+            RejectedQuestion(question=question, review=review)
+            for question, review in rejected
+        ],
+    )
+
+
 def generate_questions(
     db: Session,
     user: User,
@@ -197,26 +264,10 @@ def generate_questions(
     context: str = "",
     llm: LLMService | None = None,
 ) -> list[QuestionOut]:
-    """便捷编排：生成 → 审核 → 重试 → 入库（供 /questions/generate 直接使用）。"""
-    workbook = access.get_owned_workbook(db, user, workbook_id)
-    llm = llm or get_llm()
-    knowledge_name = resolve_knowledge_name(db, knowledge_id)
-
-    approved: list[GeneratedQuestion] = []
-    for _ in range(MAX_ATTEMPTS):
-        if len(approved) >= count:
-            break
-        batch = generate_batch(
-            llm, workbook.name, knowledge_name, question_type, count, difficulty, context
-        )
-        for question in batch:
-            if len(approved) >= count:
-                break
-            result = review_question(llm, question, knowledge_name, context)
-            if result is not None and result.passed:
-                approved.append(question)
-
-    return save_questions(db, workbook_id, knowledge_id, approved)
+    """便捷编排：生成 → 审核 → 重试 → 入库（兼容旧签名，返回入库题目列表）。"""
+    return generate_questions_with_review(
+        db, user, workbook_id, question_type, count, knowledge_id, difficulty, context, llm
+    ).saved
 
 
 def generate_similar(
