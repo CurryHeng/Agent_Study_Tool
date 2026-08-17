@@ -74,6 +74,13 @@ class QuestionOut(BaseModel):
     knowledge_name: str | None = None
 
 
+class QuestionPageOut(BaseModel):
+    """分页信封（with_total=true 时返回），供前端精确计算总页数。"""
+
+    total: int
+    items: list[QuestionOut]
+
+
 def to_question_out(
     question: Question,
     options: list[QuestionOption],

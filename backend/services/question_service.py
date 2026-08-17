@@ -40,7 +40,8 @@ def _knowledge_name(db: Session, question) -> str | None:
 def list_questions(
     db: Session, user: User, workbook_id: int | None = None,
     page: int | None = None, page_size: int | None = None,
-) -> list[QuestionOut]:
+    with_total: bool = False,
+) -> list[QuestionOut] | dict:
     visible_ids = access.visible_workbook_ids(db, user)
     if workbook_id is not None:
         if workbook_id not in visible_ids:
@@ -69,9 +70,12 @@ def list_questions(
         )
         for q in questions
     ]
+    total = len(result)
     if page is not None and page_size is not None and page_size > 0:
         start = (page - 1) * page_size
         result = result[start : start + page_size]
+    if with_total:
+        return {"total": total, "items": result}
     return result
 
 

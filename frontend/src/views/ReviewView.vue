@@ -11,14 +11,16 @@ import {
   Coffee,
   Flame,
   Lightbulb,
+  Loader2,
   Play,
+  Sparkles,
   Star,
   Timer,
   X,
   XCircle,
 } from 'lucide-vue-next'
-import { reviewApi } from '../api'
-import type { AnswerResult, DueItem, GradeResult } from '../types'
+import { questionApi, reviewApi } from '../api'
+import type { AnswerResult, DueItem, GradeResult, SimilarQuestion } from '../types'
 import RatingButtons from '../components/RatingButtons.vue'
 import MarkdownContent from '../components/MarkdownContent.vue'
 import { gradeQuestion } from '../lib/grading'
@@ -34,7 +36,19 @@ const MODES: { key: Mode; label: string; desc: string; icon: typeof Coffee }[] =
 const route = useRoute()
 const router = useRouter()
 const favoritesOnly = route.query.favorites === '1'
+const workbookId = computed(() => {
+  const raw = route.query.workbook_id
+  return raw != null ? Number(raw) : null
+})
+const questionId = computed(() => {
+  const raw = route.query.question_id
+  return raw != null ? Number(raw) : null
+})
 const includeAll = ref(false) // 刷全部题目（含未到期）
+
+// 举一反三（结果区）
+const similar = ref<SimilarQuestion | null>(null)
+const similarLoading = ref(false)
 
 const mode = ref<Mode>('relaxed')
 const due = ref<DueItem[]>([])
@@ -175,7 +189,13 @@ async function start() {
   loading.value = true
   error.value = ''
   try {
-    due.value = await reviewApi.due(includeAll.value ? 500 : 20, favoritesOnly, includeAll.value)
+    due.value = await reviewApi.due(
+      includeAll.value ? 500 : 20,
+      favoritesOnly,
+      includeAll.value,
+      workbookId.value,
+      questionId.value,
+    )
   } catch (e) {
     error.value = e instanceof Error ? e.message : '加载复习题失败，请稍后重试'
     return
@@ -265,6 +285,8 @@ function resetCard() {
   submitting.value = false
   wrongReasonInput.value = ''
   wrongAnswerInput.value = ''
+  similar.value = null
+  similarLoading.value = false
   remaining.value = 300
   startTimer()
 }
@@ -423,6 +445,18 @@ function prev() {
     index.value--
     resetCard()
     saveSession()
+  }
+}
+
+async function generateSimilar() {
+  if (!current.value || similarLoading.value || similar.value) return
+  similarLoading.value = true
+  try {
+    similar.value = await questionApi.similar(current.value.question.id)
+  } catch (e) {
+    alert(e instanceof Error ? e.message : '生成失败，请确认已配置 AI API')
+  } finally {
+    similarLoading.value = false
   }
 }
 
@@ -750,6 +784,25 @@ onBeforeUnmount(stopTimer)
       <div v-if="rated" class="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 py-3 dark:border-slate-700 dark:bg-slate-800 animate-slide-up">
         <Check :size="16" class="text-emerald-500" />
         <span class="text-sm font-medium text-slate-600 dark:text-slate-300">已记录掌握程度</span>
+      </div>
+
+      <!-- 举一反三（已评级后） -->
+      <div v-if="rated && current" class="card">
+        <div v-if="!similar" class="flex items-center justify-between gap-3">
+          <p class="text-xs text-slate-400">没掌握？让 AI 出一道同类型变式题</p>
+          <button class="btn-secondary !py-1.5 text-xs" :disabled="similarLoading" @click="generateSimilar">
+            <Loader2 v-if="similarLoading" :size="13" class="animate-spin" />
+            <Sparkles v-else :size="13" />
+            {{ similarLoading ? '生成中…' : '举一反三' }}
+          </button>
+        </div>
+        <div v-else class="space-y-2 animate-fade-in">
+          <p class="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-400">
+            <Sparkles :size="12" /> 举一反三 · 同类型题
+          </p>
+          <MarkdownContent :content="similar.content" />
+          <p class="text-sm font-medium text-emerald-600 dark:text-emerald-400">答案：{{ similar.answer }}</p>
+        </div>
       </div>
 
       <!-- 一句话总结 -->

@@ -38,7 +38,8 @@ def list_wrong_records(
     question_type: str | None = None,
     page: int | None = None,
     page_size: int | None = None,
-) -> list[WrongRecordOut]:
+    with_total: bool = False,
+) -> list[WrongRecordOut] | dict:
     records = wrong_record_repository.list_by_user(db, user.id)
     if not records:
         return []
@@ -64,9 +65,12 @@ def list_wrong_records(
         if question is None:
             continue
         result.append(_to_out(r, question, knowledge_map.get(question.knowledge_id)))
+    total = len(result)
     if page is not None and page_size is not None and page_size > 0:
         start = (page - 1) * page_size
         result = result[start : start + page_size]
+    if with_total:
+        return {"total": total, "items": result}
     return result
 
 

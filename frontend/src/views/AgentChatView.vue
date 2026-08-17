@@ -7,6 +7,7 @@ import {
   ChevronDown,
   CircleCheck,
   CircleX,
+  Copy,
   Loader2,
   MessageSquare,
   Navigation,
@@ -49,6 +50,21 @@ const workbookId = ref<number | null>(null)
 const conversations = ref<Conversation[]>([])
 const activeConversationId = ref<number | null>(null)
 const messages = ref<ChatMessage[]>([])
+
+// 消息复制
+const copiedIndex = ref<number | null>(null)
+
+async function copyMessage(mi: number, content: string) {
+  try {
+    await navigator.clipboard.writeText(content)
+    copiedIndex.value = mi
+    setTimeout(() => {
+      if (copiedIndex.value === mi) copiedIndex.value = null
+    }, 1500)
+  } catch {
+    // 剪贴板不可用（非安全上下文等）时静默
+  }
+}
 const input = ref('')
 const loading = ref(false)
 const error = ref('')
@@ -381,7 +397,7 @@ onMounted(async () => {
           <!-- 助手消息：左侧卡片 -->
           <div v-else class="flex justify-start">
             <div class="w-full max-w-[92%] space-y-2">
-              <div class="flex items-start gap-2.5">
+              <div class="group flex items-start gap-2.5">
                 <span
                   class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 text-white"
                 >
@@ -392,6 +408,14 @@ onMounted(async () => {
                 >
                   <MarkdownContent :content="msg.content" />
                 </div>
+                <button
+                  class="btn-icon mt-1 shrink-0 opacity-0 transition group-hover:opacity-100 focus:opacity-100"
+                  :title="copiedIndex === mi ? '已复制' : '复制'"
+                  @click="copyMessage(mi, msg.content)"
+                >
+                  <Check v-if="copiedIndex === mi" :size="13" class="text-emerald-500" />
+                  <Copy v-else :size="13" />
+                </button>
               </div>
 
               <!-- 执行步骤（steps） -->

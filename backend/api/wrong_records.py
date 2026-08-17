@@ -5,23 +5,29 @@ from sqlalchemy.orm import Session
 from api.deps import get_current_user
 from db.session import get_db
 from models import User
-from schemas.wrong_record import WrongReasonAnalysis, WrongRecordOut, WrongRecordUpdate
+from schemas.wrong_record import (
+    WrongReasonAnalysis,
+    WrongRecordOut,
+    WrongRecordPageOut,
+    WrongRecordUpdate,
+)
 from services import coach_service, wrong_record_service
 
 router = APIRouter(prefix="/api/wrong-records", tags=["wrong-records"])
 
 
-@router.get("", response_model=list[WrongRecordOut])
+@router.get("", response_model=list[WrongRecordOut] | WrongRecordPageOut)
 def list_wrong_records(
     knowledge_id: int | None = None,
     question_type: str | None = None,
     page: int | None = None,
     page_size: int | None = None,
+    with_total: bool = False,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     return wrong_record_service.list_wrong_records(
-        db, user, knowledge_id, question_type, page, page_size
+        db, user, knowledge_id, question_type, page, page_size, with_total
     )
 
 

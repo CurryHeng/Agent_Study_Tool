@@ -65,6 +65,13 @@ export const questionApi = {
     const qs = params.toString()
     return api.get<Question[]>(`/questions${qs ? `?${qs}` : ''}`)
   },
+  listPage: (options: { workbookId?: number | null; page?: number; pageSize?: number } = {}) => {
+    const params = new URLSearchParams({ with_total: 'true' })
+    if (options.workbookId != null) params.set('workbook_id', String(options.workbookId))
+    if (options.page != null) params.set('page', String(options.page))
+    if (options.pageSize != null) params.set('page_size', String(options.pageSize))
+    return api.get<{ total: number; items: Question[] }>(`/questions?${params.toString()}`)
+  },
   get: (id: number) => api.get<Question>(`/questions/${id}`),
   create: (body: Record<string, unknown>) => api.post<Question>('/questions', body),
   update: (id: number, body: Record<string, unknown>) => api.put<Question>(`/questions/${id}`, body),
@@ -99,10 +106,20 @@ export const knowledgeApi = {
 
 // ── 刷题 ────────────────────────────────────────────────
 export const reviewApi = {
-  due: (limit = 20, favorites = false, includeAll = false) =>
-    api.get<DueItem[]>(
-      `/review/due?limit=${limit}${favorites ? '&favorites=true' : ''}${includeAll ? '&include_all=true' : ''}`,
-    ),
+  due: (
+    limit = 20,
+    favorites = false,
+    includeAll = false,
+    workbookId?: number | null,
+    questionId?: number | null,
+  ) => {
+    const params = new URLSearchParams({ limit: String(limit) })
+    if (favorites) params.set('favorites', 'true')
+    if (includeAll) params.set('include_all', 'true')
+    if (workbookId != null) params.set('workbook_id', String(workbookId))
+    if (questionId != null) params.set('question_id', String(questionId))
+    return api.get<DueItem[]>(`/review/due?${params.toString()}`)
+  },
   answer: (questionId: number, body: Record<string, unknown>) =>
     api.post<AnswerResult>(`/questions/${questionId}/answer`, body),
   grade: (questionId: number, userAnswer: string | null) =>
@@ -126,7 +143,24 @@ export const wrongRecordApi = {
     const qs = params.toString()
     return api.get<WrongRecord[]>(`/wrong-records${qs ? `?${qs}` : ''}`)
   },
+  listPage: (options: {
+    knowledgeId?: number | null
+    questionType?: string | null
+    page?: number
+    pageSize?: number
+  } = {}) => {
+    const params = new URLSearchParams({ with_total: 'true' })
+    if (options.knowledgeId != null) params.set('knowledge_id', String(options.knowledgeId))
+    if (options.questionType) params.set('question_type', options.questionType)
+    if (options.page != null) params.set('page', String(options.page))
+    if (options.pageSize != null) params.set('page_size', String(options.pageSize))
+    return api.get<{ total: number; items: WrongRecord[] }>(`/wrong-records?${params.toString()}`)
+  },
   update: (id: number, body: Record<string, unknown>) => api.put<WrongRecord>(`/wrong-records/${id}`, body),
+  analyze: (id: number) =>
+    api.post<{ reason_type: string; explanation: string; suggestion: string }>(
+      `/wrong-records/${id}/analyze`,
+    ),
 }
 
 // ── 思维导图 ────────────────────────────────────────────

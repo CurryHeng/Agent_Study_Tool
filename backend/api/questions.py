@@ -6,22 +6,30 @@ from api.deps import get_current_user
 from db.session import get_db
 from models import User
 from schemas.generation import GeneratedQuestion, GenerateRequest, GenerateResult
-from schemas.question import QuestionCreate, QuestionOut, QuestionUpdate
+from schemas.question import (
+    QuestionCreate,
+    QuestionOut,
+    QuestionPageOut,
+    QuestionUpdate,
+)
 from services import generation_service, question_service, rag_service
 from services.access import AccessError
 
 router = APIRouter(prefix="/api/questions", tags=["questions"])
 
 
-@router.get("", response_model=list[QuestionOut])
+@router.get("", response_model=list[QuestionOut] | QuestionPageOut)
 def list_questions(
     workbook_id: int | None = None,
     page: int | None = None,
     page_size: int | None = None,
+    with_total: bool = False,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-) -> list:
-    return question_service.list_questions(db, user, workbook_id, page, page_size)
+):
+    return question_service.list_questions(
+        db, user, workbook_id, page, page_size, with_total
+    )
 
 
 @router.post("", status_code=201, response_model=QuestionOut)

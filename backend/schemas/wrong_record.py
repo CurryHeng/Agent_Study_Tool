@@ -20,6 +20,13 @@ class WrongRecordOut(BaseModel):
     knowledge_name: str | None = None
 
 
+class WrongRecordPageOut(BaseModel):
+    """分页信封（with_total=true 时返回），供前端精确计算总页数。"""
+
+    total: int
+    items: list[WrongRecordOut]
+
+
 class WrongRecordUpdate(BaseModel):
     wrong_answer: str | None = None
     wrong_reason: str | None = None

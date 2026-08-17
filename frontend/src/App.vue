@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   BarChart3,
   BookX,
@@ -20,10 +20,16 @@ import { useAuthStore } from './stores/auth'
 import { useDarkMode } from './lib/darkMode'
 
 const auth = useAuthStore()
+const route = useRoute()
 const router = useRouter()
 const { isDark, toggle } = useDarkMode()
 
 const initial = computed(() => (auth.user?.username || '?').charAt(0).toUpperCase())
+
+// 悬浮球：登录后显示，AI 助手页自身隐藏
+const showFloatingAssistant = computed(
+  () => auth.loggedIn && route.path !== '/assistant' && !['/login', '/register'].includes(route.path),
+)
 
 const navItems = [
   { to: '/', label: '首页', icon: Home },
@@ -87,5 +93,21 @@ async function logout() {
     <main class="mx-auto max-w-5xl px-4 py-6 sm:py-8">
       <RouterView />
     </main>
+
+    <!-- AI 助手悬浮球 -->
+    <Transition
+      enter-active-class="transition duration-200 ease-out"
+      enter-from-class="scale-50 opacity-0"
+      enter-to-class="scale-100 opacity-100"
+    >
+      <button
+        v-if="showFloatingAssistant"
+        class="fixed bottom-6 right-6 z-50 flex items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 p-4 text-white shadow-lg shadow-indigo-500/40 transition hover:scale-105 hover:shadow-indigo-500/60 active:scale-95"
+        title="AI 助手"
+        @click="router.push('/assistant')"
+      >
+        <Sparkles :size="22" />
+      </button>
+    </Transition>
   </div>
 </template>

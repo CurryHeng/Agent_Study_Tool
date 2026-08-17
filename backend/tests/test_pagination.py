@@ -71,6 +71,28 @@ def test_questions_pagination(client, auth_headers, workbook):
     assert len(page2) == 1
 
 
+def test_with_total_envelope(client, auth_headers, workbook):
+    """with_total=true 返回 {total, items} 信封，供前端精确计算总页数（修复"下一页"无上限）。"""
+    qs = [_create_choice(client, auth_headers, workbook) for _ in range(3)]
+    _answer_wrong(client, auth_headers, qs[0]["id"], "B")
+
+    q = client.get(
+        "/api/questions?page=1&page_size=2&with_total=true", headers=auth_headers
+    ).json()
+    assert q["total"] == 3
+    assert len(q["items"]) == 2
+
+    w = client.get(
+        "/api/wrong-records?page=1&page_size=1&with_total=true", headers=auth_headers
+    ).json()
+    assert w["total"] == 1
+    assert len(w["items"]) == 1
+
+    # 不带 with_total 时行为不变（纯数组，向后兼容）
+    legacy = client.get("/api/questions?page=1&page_size=2", headers=auth_headers).json()
+    assert isinstance(legacy, list)
+
+
 def test_knowledge_pagination(client, auth_headers, workbook):
     for i in range(3):
         client.post(

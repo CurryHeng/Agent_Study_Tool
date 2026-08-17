@@ -52,10 +52,14 @@ def get_due(
     limit: int = 20,
     favorites: bool = False,
     include_all: bool = False,
+    workbook_id: int | None = None,
+    question_id: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    return review_service.get_due(db, user, limit, favorites, include_all)
+    return review_service.get_due(
+        db, user, limit, favorites, include_all, workbook_id, question_id
+    )
 
 
 @router.post("/review/{question_id}/favorite", response_model=ReviewCardOut)

@@ -6,6 +6,7 @@ import {
   ChevronRight,
   CircleCheck,
   CircleX,
+  Copy,
   Library,
   Loader2,
   Pencil,
@@ -30,6 +31,7 @@ const selected = ref<number>(SYSTEM_WORKBOOK_ID)
 const questions = ref<Question[]>([])
 const page = ref(1)
 const pageSize = ref(10)
+const totalQuestions = ref(0)
 const similarMap = ref<Record<number, SimilarQuestion>>({})
 const loadingSimilar = ref<number | null>(null)
 
@@ -109,17 +111,21 @@ async function load() {
 }
 
 async function loadQuestions() {
-  questions.value = await questionApi.list({
+  const data = await questionApi.listPage({
     workbookId: selected.value,
     page: page.value,
     pageSize: pageSize.value,
   })
+  questions.value = data.items
+  totalQuestions.value = data.total
   similarMap.value = {}
   selectedIds.value = new Set()
 }
 
+const totalPages = computed(() => Math.max(1, Math.ceil(totalQuestions.value / pageSize.value)))
+
 function nextPage() {
-  if (questions.value.length < pageSize.value) return
+  if (page.value >= totalPages.value) return
   page.value++
   loadQuestions()
 }
@@ -200,8 +206,48 @@ async function saveSimilar(q: Question) {
   await loadQuestions()
 }
 
-async function openGenerate() {
-  showGenerate.value = !showGenerate.value
+async function createWorkbook() {
+  const name = prompt('新练习册名称：')?.trim()
+  if (!name) return
+  try {
+    const wb = await workbookApi.create(name)
+    workbooks.value = [...workbooks.value, wb]
+    selected.value = wb.id
+  } catch (e) {
+    alert(e instanceof Error ? e.message : '创建失败')
+  }
+}
+
+async function copyToMine(q: Question) {
+  const target = workbooks.value[0]?.id
+  if (target == null) {
+    const name = prompt('复制到新练习册，请输入名称：')?.trim()
+    if (!name) return
+    const wb = await workbookApi.create(name)
+    workbooks.value = [...workbooks.value, wb]
+    await doCopy(q, wb.id)
+    selected.value = wb.id
+    return
+  }
+  await doCopy(q, target)
+}
+
+async function doCopy(q: Question, targetWorkbookId: number) {
+  await questionApi.create({
+    workbook_id: targetWorkbookId,
+    type: q.type,
+    content: q.content,
+    answer: q.answer,
+    analysis: q.analysis || null,
+    difficulty: q.difficulty,
+    ...(q.options.length
+      ? { options: q.options.map((o) => ({ option_key: o.option_key, content: o.content })) }
+      : {}),
+  })
+  await loadQuestions()
+}
+
+async function openGenerate() {  showGenerate.value = !showGenerate.value
   if (showGenerate.value && knowledge.value.length === 0) {
     try {
       knowledge.value = await knowledgeApi.list(selected.value)
@@ -282,6 +328,13 @@ onMounted(load)
       >
         {{ wb.name }} ({{ byWorkbook.get(wb.id) || 0 }})
       </button>
+      <button
+        title="新建练习册"
+        class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-dashed border-slate-300 text-slate-400 transition hover:border-emerald-400 hover:text-emerald-500 dark:border-slate-600"
+        @click="createWorkbook"
+      >
+        <Plus :size="14" />
+      </button>
       <div v-if="!isBuiltin" class="ml-auto flex shrink-0 gap-1.5">
         <button class="btn-secondary !py-1.5 text-xs" @click="openGenerate">
           <Wand2 :size="13" /> AI 生成
@@ -298,7 +351,7 @@ onMounted(load)
       <button v-if="editMode && selectedIds.size > 0" class="btn-danger !py-1.5 text-xs" @click="batchDelete">
         <Trash2 :size="13" /> 删除选中 ({{ selectedIds.size }})
       </button>
-      <button v-else class="btn-primary !py-1.5 text-xs" @click="router.push('/review')">
+      <button v-else class="btn-primary !py-1.5 text-xs" @click="router.push(`/review?workbook_id=${selected}`)">
         <Play :size="13" class="fill-current" /> 开始刷题
       </button>
     </div>
@@ -435,6 +488,9 @@ onMounted(load)
               <button class="btn-icon hover:!text-violet-500 hover:!bg-violet-50 dark:hover:!bg-violet-500/10" title="举一反三" :disabled="loadingSimilar === q.id" @click="generateSimilar(q)">
                 <Sparkles :size="14" />
               </button>
+              <button v-if="q.source === 'builtin'" class="btn-icon hover:!text-emerald-500 hover:!bg-emerald-50 dark:hover:!bg-emerald-500/10" title="复制到我的题库（内置题库只读，复制后可编辑）" @click="copyToMine(q)">
+                <Copy :size="14" />
+              </button>
               <button v-if="q.source !== 'builtin'" class="btn-icon hover:!text-indigo-500 hover:!bg-indigo-50 dark:hover:!bg-indigo-500/10" title="编辑" @click="router.push(`/questions/add?edit=${q.id}`)">
                 <Pencil :size="14" />
               </button>
@@ -461,7 +517,7 @@ onMounted(load)
     <Pagination
       :page="page"
       :page-size="pageSize"
-      :has-more="questions.length >= pageSize"
+      :has-more="page < totalPages"
       @prev="prevPage"
       @next="nextPage"
     />

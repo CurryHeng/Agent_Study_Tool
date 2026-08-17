@@ -74,14 +74,25 @@ def get_due(
     limit: int = 20,
     favorites: bool = False,
     include_all: bool = False,
+    workbook_id: int | None = None,
+    question_id: int | None = None,
 ) -> list[DueItem]:
     """返回到期待复习的题目。
 
     - favorites=True：返回收藏的题目；
     - include_all=True：返回全部可见题目（含未到期的），供"刷全部题"模式；
+    - workbook_id：仅返回该练习册的题目（题库页"刷本册"）；
+    - question_id：仅复习指定题目（错题本"去复习"直达），忽略到期状态；
     - 否则：仅返回到期题目（FSRS 间隔重复）。
     """
-    questions = question_repository.list_by_workbooks(db, access.visible_workbook_ids(db, user))
+    visible_ids = access.visible_workbook_ids(db, user)
+    if workbook_id is not None:
+        if workbook_id not in visible_ids:
+            raise access.AccessError(403, "无权访问该练习册")
+        visible_ids = [workbook_id]
+    questions = question_repository.list_by_workbooks(db, visible_ids)
+    if question_id is not None:
+        questions = [q for q in questions if q.id == question_id]
     if not questions:
         return []
 
@@ -108,8 +119,8 @@ def get_due(
         card = card_map.get(q.id)
         if card is None:
             new_questions.append(q)
-        elif favorites:
-            if card.favorited:
+        elif question_id is not None or favorites:
+            if question_id is not None or card.favorited:
                 items.append((q, card))
         elif include_all or card.due <= now:
             items.append((q, card))

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { BookMarked, Pencil } from 'lucide-vue-next'
+import { BookMarked, BrainCircuit, Loader2, Pencil, Play } from 'lucide-vue-next'
 import { wrongRecordApi } from '../api'
 import type { WrongRecord } from '../types'
 import MarkdownContent from '../components/MarkdownContent.vue'
@@ -16,6 +16,7 @@ const TYPE_LABEL: Record<string, string> = {
 }
 
 const records = ref<WrongRecord[]>([])
+const totalRecords = ref(0)
 const route = useRoute()
 const router = useRouter()
 const knowledgeFilterId = computed(() => {
@@ -27,22 +28,41 @@ const page = ref(1)
 const pageSize = ref(10)
 const editingId = ref<number | null>(null)
 const editReason = ref('')
+const analyzingId = ref<number | null>(null)
 
 const filtered = computed(() => records.value)
+const totalPages = computed(() => Math.max(1, Math.ceil(totalRecords.value / pageSize.value)))
 
 async function load() {
-  records.value = await wrongRecordApi.list({
+  const data = await wrongRecordApi.listPage({
     knowledgeId: knowledgeFilterId.value,
     questionType: typeFilter.value === 'all' ? null : typeFilter.value,
     page: page.value,
     pageSize: pageSize.value,
   })
+  records.value = data.items
+  totalRecords.value = data.total
 }
 
 function nextPage() {
-  if (records.value.length < pageSize.value) return
+  if (page.value >= totalPages.value) return
   page.value++
   load()
+}
+
+async function analyze(r: WrongRecord) {
+  if (analyzingId.value != null) return
+  analyzingId.value = r.id
+  try {
+    const result = await wrongRecordApi.analyze(r.id)
+    r.reason_type = result.reason_type
+    r.explanation = result.explanation
+    r.suggestion = result.suggestion
+  } catch (e) {
+    alert(e instanceof Error ? e.message : '分析失败，请确认已配置 AI API')
+  } finally {
+    analyzingId.value = null
+  }
 }
 
 function prevPage() {
@@ -130,14 +150,41 @@ watch(typeFilter, () => { page.value = 1; load() })
             <button class="btn-ghost !py-1 text-xs" @click="cancelEdit">取消</button>
           </div>
         </div>
-        <div v-else class="mt-3 flex items-start justify-between gap-2">
-          <p class="text-xs text-slate-500 dark:text-slate-400">
-            <span class="font-medium text-slate-600 dark:text-slate-300">错因：</span>{{ r.wrong_reason || '（未记录）' }}
-          </p>
-          <button class="flex shrink-0 items-center gap-1 text-xs text-indigo-500 transition hover:text-indigo-700 dark:text-indigo-400" @click="startEdit(r)">
-            <Pencil :size="12" />
-            {{ r.wrong_reason ? '编辑' : '标注错因' }}
-          </button>
+        <div v-else class="mt-3 space-y-2">
+          <div class="flex items-start justify-between gap-2">
+            <p class="text-xs text-slate-500 dark:text-slate-400">
+              <span class="font-medium text-slate-600 dark:text-slate-300">错因：</span>{{ r.wrong_reason || '（未记录）' }}
+            </p>
+            <div class="flex shrink-0 items-center gap-2">
+              <button
+                class="flex items-center gap-1 text-xs text-violet-500 transition hover:text-violet-700 dark:text-violet-400"
+                :disabled="analyzingId === r.id"
+                @click="analyze(r)"
+              >
+                <Loader2 v-if="analyzingId === r.id" :size="12" class="animate-spin" />
+                <BrainCircuit v-else :size="12" />
+                AI 错因分析
+              </button>
+              <button
+                class="flex items-center gap-1 text-xs text-emerald-600 transition hover:text-emerald-700 dark:text-emerald-400"
+                @click="router.push(`/review?question_id=${r.question_id}`)"
+              >
+                <Play :size="12" class="fill-current" />
+                重做此题
+              </button>
+              <button class="flex items-center gap-1 text-xs text-indigo-500 transition hover:text-indigo-700 dark:text-indigo-400" @click="startEdit(r)">
+                <Pencil :size="12" />
+                {{ r.wrong_reason ? '编辑' : '标注错因' }}
+              </button>
+            </div>
+          </div>
+
+          <!-- AI 分析结果 -->
+          <div v-if="r.reason_type" class="rounded-xl border border-violet-200 bg-violet-50/60 p-3 dark:border-violet-500/30 dark:bg-violet-500/10">
+            <span class="badge bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300">{{ r.reason_type }}</span>
+            <p v-if="r.explanation" class="mt-2 text-xs text-slate-600 dark:text-slate-300">{{ r.explanation }}</p>
+            <p v-if="r.suggestion" class="mt-1 text-xs text-emerald-700 dark:text-emerald-400">建议：{{ r.suggestion }}</p>
+          </div>
         </div>
       </div>
     </div>
@@ -146,7 +193,7 @@ watch(typeFilter, () => { page.value = 1; load() })
     <Pagination
       :page="page"
       :page-size="pageSize"
-      :has-more="records.length >= pageSize"
+      :has-more="page < totalPages"
       @prev="prevPage"
       @next="nextPage"
     />

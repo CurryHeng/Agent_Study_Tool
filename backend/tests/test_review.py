@@ -456,6 +456,57 @@ def test_get_due_favorites(client, auth_headers, workbook):
     assert not any(item["question"]["id"] == q["id"] for item in favs2)
 
 
+def test_get_due_workbook_id_filters_and_question_id_targets(
+    client, auth_headers, workbook, session
+):
+    """题库页"刷本册"与错题本"重做此题"：due 支持按练习册过滤与按题直达（忽略到期）。"""
+    from datetime import UTC, datetime, timedelta
+
+    q = _create_choice(client, auth_headers, workbook)
+    # 答对一次，把卡片 due 推到远期（模拟"未到期"）
+    client.post(
+        f"/api/questions/{q['id']}/answer",
+        json={"user_answer": "B", "mode": "normal"},
+        headers=auth_headers,
+    )
+    card = session.query(ReviewCard).filter(ReviewCard.question_id == q["id"]).first()
+    card.due = datetime.now(UTC).replace(tzinfo=None) + timedelta(days=30)
+    session.commit()
+
+    # workbook_id：仅本册，但未到期 → 不出现
+    by_wb = client.get(
+        f"/api/review/due?workbook_id={workbook['id']}&limit=100", headers=auth_headers
+    ).json()
+    assert not any(item["question"]["id"] == q["id"] for item in by_wb)
+
+    # question_id：直达该题（未到期也返回）
+    targeted = client.get(
+        f"/api/review/due?question_id={q['id']}", headers=auth_headers
+    ).json()
+    assert [item["question"]["id"] for item in targeted] == [q["id"]]
+
+    # workbook_id=0（内置题库，全员可见）不 403
+    builtin = client.get("/api/review/due?workbook_id=0", headers=auth_headers)
+    assert builtin.status_code == 200
+
+    # 他人私有练习册 → 403
+    import uuid as _uuid
+
+    sfx = _uuid.uuid4().hex[:8]
+    other = client.post(
+        "/api/auth/register",
+        json={"username": f"w{sfx}", "email": f"{sfx}@w.com", "password": "password123"},
+    ).json()
+    other_headers = {"Authorization": f"Bearer {other['access_token']}"}
+    other_wb = client.post(
+        "/api/workbooks", json={"name": "他人册"}, headers=other_headers
+    ).json()
+    resp = client.get(
+        f"/api/review/due?workbook_id={other_wb['id']}", headers=auth_headers
+    )
+    assert resp.status_code == 403
+
+
 # ── 学习统计 ──────────────────────────────────────────────
 def test_stats_endpoint(client, auth_headers, workbook):
     q = _create_choice(client, auth_headers, workbook)

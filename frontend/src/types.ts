@@ -75,6 +75,9 @@ export interface WrongRecord {
   question_id: number
   wrong_answer: string | null
   wrong_reason: string | null
+  reason_type?: string | null
+  explanation?: string | null
+  suggestion?: string | null
   created_at: string
   question_content: string
   correct_answer: string
