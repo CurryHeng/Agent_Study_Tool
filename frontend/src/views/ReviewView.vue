@@ -18,7 +18,7 @@ import {
   XCircle,
 } from 'lucide-vue-next'
 import { reviewApi } from '../api'
-import type { AnswerResult, DueItem } from '../types'
+import type { AnswerResult, DueItem, GradeResult } from '../types'
 import RatingButtons from '../components/RatingButtons.vue'
 import MarkdownContent from '../components/MarkdownContent.vue'
 import { gradeQuestion } from '../lib/grading'
@@ -34,6 +34,7 @@ const MODES: { key: Mode; label: string; desc: string; icon: typeof Coffee }[] =
 const route = useRoute()
 const router = useRouter()
 const favoritesOnly = route.query.favorites === '1'
+const includeAll = ref(false) // 刷全部题目（含未到期）
 
 const mode = ref<Mode>('relaxed')
 const due = ref<DueItem[]>([])
@@ -51,6 +52,7 @@ const submitted = ref(false) // 选择题已上交（显示对错与答案，等
 const selfAssessed = ref<boolean | null>(null) // 揭晓后自评
 const pendingRating = ref<string | null>(null) // 选了 again/hard 等待填错因
 const result = ref<AnswerResult | null>(null)
+const gradeResult = ref<GradeResult | null>(null) // 填空/判断"上交"时的后端权威判分
 const submitting = ref(false) // 防止提交期间重复作答
 const wrongReasonInput = ref('')
 const wrongAnswerInput = ref('')
@@ -103,6 +105,8 @@ const localCorrect = computed(() => {
     if (selected.value.length === 0) return null
     return gradeQuestion(q, selectedAnswer.value)
   }
+  // 填空/判断：优先用后端权威判分（LLM 近义），未返回时降级为本地精确匹配
+  if (gradeResult.value != null) return gradeResult.value.is_correct
   if (textAnswer.value.trim() === '') return null
   return gradeQuestion(q, textAnswer.value)
 })
@@ -171,7 +175,7 @@ async function start() {
   loading.value = true
   error.value = ''
   try {
-    due.value = await reviewApi.due(20, favoritesOnly)
+    due.value = await reviewApi.due(includeAll.value ? 500 : 20, favoritesOnly, includeAll.value)
   } catch (e) {
     error.value = e instanceof Error ? e.message : '加载复习题失败，请稍后重试'
     return
@@ -257,6 +261,7 @@ function resetCard() {
   selfAssessed.value = null
   pendingRating.value = null
   result.value = null
+  gradeResult.value = null
   submitting.value = false
   wrongReasonInput.value = ''
   wrongAnswerInput.value = ''
@@ -289,12 +294,30 @@ function choose(optionKey: string) {
   }
 }
 
-function handIn() {
+async function handIn() {
+  if (submitting.value || submitted.value || rated.value) return
   if (mode.value === 'strict') {
     submit()
-  } else {
-    submitted.value = true
+    return
   }
+  if (isChoice.value) {
+    submitted.value = true
+    return
+  }
+  // 填空/判断：调用后端权威判分（填空近义走 LLM），失败降级为本地精确匹配
+  submitting.value = true
+  try {
+    gradeResult.value = await reviewApi.grade(current.value.question.id, textAnswer.value)
+  } catch {
+    gradeResult.value = {
+      is_correct: gradeQuestion(current.value.question, textAnswer.value),
+      correct_answer: current.value.question.answer,
+      analysis: current.value.question.analysis,
+    }
+  } finally {
+    submitting.value = false
+  }
+  submitted.value = true
 }
 
 async function submit(rating?: string, wrongReason?: string) {
@@ -477,6 +500,10 @@ onBeforeUnmount(stopTimer)
             </div>
           </button>
         </div>
+        <label class="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+          <input v-model="includeAll" type="checkbox" class="accent-emerald-600" />
+          刷全部题目（含未到期的，共全部题库）
+        </label>
         <button class="btn-primary w-full" :disabled="loading" @click="start">
           {{ loading ? '加载中…' : '开始' }}
         </button>
@@ -614,10 +641,15 @@ onBeforeUnmount(stopTimer)
             v-model="textAnswer"
             class="input mb-3"
             placeholder="填写答案"
-            :disabled="revealed || submitted || rated"
+            :disabled="revealed || submitted || rated || submitting"
           />
-          <button v-if="!isShortAnswer && canHandIn" class="btn-primary w-full" @click="handIn">
-            提交
+          <button
+            v-if="!isShortAnswer && canHandIn"
+            class="btn-primary w-full"
+            :disabled="submitting"
+            @click="handIn"
+          >
+            {{ submitting ? '判分中…' : '提交' }}
           </button>
           <button v-if="isShortAnswer && !revealed && !rated" class="btn-primary w-full" @click="revealed = true">
             揭晓答案

@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session
 
 from models import User
-from models.enums import QuestionType
 from repositories import (
     answer_record_repository,
     knowledge_repository,
@@ -33,13 +32,7 @@ def answer_question(
 ) -> AnswerResponse:
     question = access.get_visible_question(db, user, question_id)
 
-    if grading.is_auto_gradable(question.type):
-        is_correct = grading.grade_question(question, request.user_answer)
-    elif question.type == QuestionType.short_answer:
-        # 简答题走 LLM 判分；LLM 不可用时返回 None（降级为用户自评）
-        is_correct = grading.grade_short_answer(question, request.user_answer)
-    else:
-        is_correct = None
+    is_correct = grading.grade_answer(question, request.user_answer)
     rating = _derive_rating(request.mode, request.rating, is_correct)
 
     # 1. 答题记录（只增不改）
@@ -75,10 +68,18 @@ def answer_question(
     )
 
 
-def get_due(db: Session, user: User, limit: int = 20, favorites: bool = False) -> list[DueItem]:
-    """返回到期待复习的题目（favorites=True 时返回收藏的题目）。
+def get_due(
+    db: Session,
+    user: User,
+    limit: int = 20,
+    favorites: bool = False,
+    include_all: bool = False,
+) -> list[DueItem]:
+    """返回到期待复习的题目。
 
-    优化：批量取已有复习卡（避免 N+1）；仅为限额内的新题建卡，不一次性为全部题建卡。
+    - favorites=True：返回收藏的题目；
+    - include_all=True：返回全部可见题目（含未到期的），供"刷全部题"模式；
+    - 否则：仅返回到期题目（FSRS 间隔重复）。
     """
     questions = question_repository.list_by_workbooks(db, access.visible_workbook_ids(db, user))
     if not questions:
@@ -110,7 +111,7 @@ def get_due(db: Session, user: User, limit: int = 20, favorites: bool = False) -
         elif favorites:
             if card.favorited:
                 items.append((q, card))
-        elif card.due <= now:
+        elif include_all or card.due <= now:
             items.append((q, card))
 
     # 仅为限额内的新题建卡（favorites 模式下新题无收藏，跳过）
