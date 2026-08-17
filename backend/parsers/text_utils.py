@@ -12,6 +12,42 @@ from parsers.base import ParsedDocument, Section
 _CHAPTER_RE = re.compile(r"^第[一二三四五六七八九十百零\d]+[章节篇]")
 _NUMBERED_RE = re.compile(r"^(\d+(?:\.\d+)*)[、.\s]")
 _CN_NUMBERED_RE = re.compile(r"^[一二三四五六七八九十]+[、.]")
+_SENTENCE_END_RE = re.compile(r"[。！？；]$")
+
+
+def heading_level(line: str) -> int | None:
+    """判断一行文本的标题层级；返回 None 表示正文行。
+
+    - 第X章/节、中文数字编号（一、）：标题；
+    - 多级数字编号（1.1 / 1.2.3）：标题，层级 = 点数 + 1；
+    - 裸编号（"1 Introduction"）：仅当行短（≤40 字符）且不以句末标点结尾时才算标题，
+      避免把"1956 年达特茅斯会议标志着……诞生。"这类以年份/数字开头的正文句误判为章节。
+    """
+    if _CHAPTER_RE.match(line):
+        return 1
+    m = _NUMBERED_RE.match(line)
+    if m:
+        if "." in m.group(1):
+            return m.group(1).count(".") + 1
+        if len(line) <= 40 and not _SENTENCE_END_RE.search(line):
+            return 1
+        return None
+    if _CN_NUMBERED_RE.match(line):
+        return 1
+    return None
+
+
+def slide_subheading_level(line: str) -> int | None:
+    """PPT 正文行是否构成幻灯片的子标题（保守：仅 第X章 / x.y 多级编号）。
+
+    裸编号（"1、xxx"）在课件里多为列表项而非子标题，不提升。
+    """
+    if _CHAPTER_RE.match(line):
+        return 2
+    m = _NUMBERED_RE.match(line)
+    if m and "." in m.group(1):
+        return 2
+    return None
 
 
 # ── 知识点/章节名清洗（供 Parser 与 Service 共用，避免 Parser 依赖 Service） ──
@@ -73,13 +109,7 @@ def split_text_to_sections(text: str, source_type: str) -> ParsedDocument:
         if not line:
             continue
 
-        level: int | None = None
-        if _CHAPTER_RE.match(line):
-            level = 1
-        elif _NUMBERED_RE.match(line):
-            level = _NUMBERED_RE.match(line).group(1).count(".") + 1
-        elif _CN_NUMBERED_RE.match(line):
-            level = 1
+        level: int | None = heading_level(line)
 
         if level is None:
             if current is not None:
