@@ -9,6 +9,9 @@ class WrongRecordOut(BaseModel):
     question_id: int
     wrong_answer: str | None
     wrong_reason: str | None
+    reason_type: str | None = None
+    explanation: str | None = None
+    suggestion: str | None = None
     created_at: datetime
     question_content: str
     correct_answer: str
@@ -20,3 +23,9 @@ class WrongRecordOut(BaseModel):
 class WrongRecordUpdate(BaseModel):
     wrong_answer: str | None = None
     wrong_reason: str | None = None
+
+
+class WrongReasonAnalysis(BaseModel):
+    reason_type: str
+    explanation: str
+    suggestion: str

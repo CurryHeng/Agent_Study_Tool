@@ -4,6 +4,22 @@ from sqlalchemy.orm import Session
 from models import AnswerRecord
 
 
+def list_by_question_user(
+    db: Session, question_id: int, user_id: int, limit: int = 10
+) -> list[AnswerRecord]:
+    """某用户对某题的最近作答记录（供错因分析参考）。"""
+    return (
+        db.query(AnswerRecord)
+        .filter(
+            AnswerRecord.question_id == question_id,
+            AnswerRecord.user_id == user_id,
+        )
+        .order_by(AnswerRecord.id.desc())
+        .limit(limit)
+        .all()
+    )
+
+
 def create(
     db: Session,
     user_id: int,
