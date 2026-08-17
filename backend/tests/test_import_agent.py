@@ -124,6 +124,114 @@ def test_terms_match_and_stats():
     assert compute_match_stats([], [{"name": "x"}])["matched"] == 0
 
 
+# ── 名字清洗（PDF 乱码 / 泛标题 / 参考文献 / 整句截断） ──
+
+
+def test_clean_kp_name_filters_garbage():
+    from parsers.text_utils import _clean_kp_name
+
+    assert _clean_kp_name("0 ¼ a1 a2 /C1/C1/C1 an b1") is None  # PDF 公式乱码
+    assert _clean_kp_name("1 Introduction") is None  # 编号泛标题
+    assert _clean_kp_name("参考文献") is None  # 中文泛标题
+    ref = "Liu 等 - 2005 - A meshfree radial point interpolation"
+    assert _clean_kp_name(ref) is None  # 参考文献
+    assert _clean_kp_name("1.2.3") is None  # 纯数字符号
+    assert _clean_kp_name("  ") is None
+
+
+def test_clean_kp_name_truncates_sentences():
+    from parsers.text_utils import _clean_kp_name
+
+    long_en = "Adding polynomial term up to the linear order can improve the interpolation accuracy"
+    short = _clean_kp_name(long_en)
+    assert short is not None and len(short) <= 40
+    assert short.startswith("Adding polynomial")
+
+
+def test_build_knowledge_filters_garbage_points():
+    """含垃圾模式的文档不产出垃圾知识点。"""
+    doc = (
+        "# Paper\n\n"
+        "## Introduction\n"
+        "1 Introduction\n"
+        "**Radial basis** interpolation is a meshfree method.\n"
+        "Liu 等 - 2005 - A meshfree radial point interpolation method\n"
+        "0 ¼ a1 a2 /C1/C1/C1 an b1 b2\n"
+    )
+    knowledge = build_knowledge_from_structure(extract_structure_from_text(doc), "p.md")
+    all_kps = [kp["name"] for ch in knowledge["chapters"] for kp in ch["knowledge_points"]]
+    assert any("Radial" in k or "radial" in k for k in all_kps)
+    assert not any("Introduction" in k for k in all_kps)
+    assert not any("Liu" in k for k in all_kps)
+    assert not any("/C1" in k for k in all_kps)
+
+
+# ── docs 对齐：层级来自章节识别（新数据模型 §4.3） ──
+
+
+def test_list_items_extracted_flat():
+    """列表项仍提取（docs 层级来自章节而非主题组，平铺挂章节下）。"""
+    doc = (
+        "# 章节\n\n"
+        "工具分为五类：\n"
+        "- 感知工具\n"
+        "- 执行工具\n"
+    )
+    knowledge = build_knowledge_from_structure(extract_structure_from_text(doc), "t.md")
+    points = knowledge["chapters"][0]["knowledge_points"]
+    assert len(points) == 2
+    assert all("topic" not in p for p in points)
+
+
+def test_contrast_pairs_extracted_flat():
+    """对比关系双方仍提取（平铺，无主题组）。"""
+    doc = "# 章节\n\nKV Cache 与 Prompt Cache 的区别在于缓存层级。\n"
+    knowledge = build_knowledge_from_structure(extract_structure_from_text(doc), "t.md")
+    points = knowledge["chapters"][0]["knowledge_points"]
+    assert len(points) == 2
+    assert all("topic" not in p for p in points)
+
+
+def test_sections_quality_ok():
+    """章节质量评估：平均每章段落数 ≥ 0.5 才有效（docs：无有效章节时 LLM 理解）。"""
+    from parsers.base import Section
+    from workflow.import_graph import _sections_quality_ok
+
+    # 健康章节：2 章 4 段
+    healthy = [
+        Section(title="第一章", level=1, paragraphs=["a", "b"]),
+        Section(title="第二章", level=1, paragraphs=["c", "d"]),
+    ]
+    assert _sections_quality_ok(healthy)
+
+    # 破碎章节：70 个"章节"几乎无正文（公式行被误判）
+    broken = [Section(title=f"碎片{i}", level=1, paragraphs=[]) for i in range(70)]
+    broken[0].paragraphs = ["唯一一段"]
+    assert not _sections_quality_ok(broken)
+
+    # 单章节/空章节
+    assert not _sections_quality_ok([])
+    assert not _sections_quality_ok([Section(title="全文", level=1, paragraphs=["x"])])
+
+
+def test_text_utils_filters_garbage_headings(tmp_path):
+    """Parser 章节识别收紧：公式乱码/泛标题不认作章节（docs：确定性逻辑过滤）。"""
+    from parsers.text_utils import split_text_to_sections
+
+    text = (
+        "1. 有效章节\n正文段落内容。\n\n"
+        "0 ¼ a1 a2 /C1/C1/C1 an b1\n\n"  # 公式乱码 → 应作为正文
+        "1 Introduction\n"  # 泛标题 → 应作为正文
+        "2. 另一个有效章节\n更多正文。\n"
+    )
+    parsed = split_text_to_sections(text, "pdf")
+    titles = [s.title for s in parsed.sections]
+    assert "1. 有效章节" in titles
+    assert "2. 另一个有效章节" in titles
+    assert not any("/C1" in t for t in titles)
+    assert not any("Introduction" in t for t in titles)
+
+
 # ── 分块 ─────────────────────────────────────────────────
 
 
@@ -354,3 +462,36 @@ def test_upload_document_without_api_key_skips_agents(
     names = [n["name"] for n in nodes]
     assert "优化方法" in names
     assert "梯度下降" in names  # 确定性章节树仍有
+
+
+# ── 外语适配：Part/Unit 标题识别 + 数量词列表 ──
+
+
+def test_en_part_heading_recognized():
+    """外语教材分层标题：Part I / Unit 3 / Lesson 2 被识别为标题。"""
+    doc = (
+        "Part I Foundations\n"
+        "This part introduces basic concepts.\n\n"
+        "Unit 3 Agents\n"
+        "Agents interact with environments.\n\n"
+        "Lesson 2 Tools\n"
+        "Tools extend agent capabilities.\n"
+    )
+    s = extract_structure_from_text(doc)
+    titles = [h.text for h in s.headings]
+    assert any("Part I" in t for t in titles)
+    assert any("Unit 3" in t for t in titles)
+    assert any("Lesson 2" in t for t in titles)
+
+
+def test_en_quantifier_list_intro():
+    """数量词列表引导句：Three types: 也能提取列表项。"""
+    doc = (
+        "Three types:\n"
+        "- perception tools\n"
+        "- execution tools\n"
+        "- collaboration tools\n"
+    )
+    s = extract_structure_from_text(doc)
+    assert len(s.list_items) == 3
+    assert s.list_items[0].item == "perception tools"

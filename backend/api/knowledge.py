@@ -5,7 +5,12 @@ from sqlalchemy.orm import Session
 from api.deps import get_current_user
 from db.session import get_db
 from models import User
-from schemas.knowledge import KnowledgeCreate, KnowledgeOut, KnowledgeUpdate
+from schemas.knowledge import (
+    KnowledgeCreate,
+    KnowledgeOut,
+    KnowledgeSuggestOut,
+    KnowledgeUpdate,
+)
 from services import knowledge_service
 
 router = APIRouter(prefix="/api/knowledge", tags=["knowledge"])
@@ -63,3 +68,14 @@ def delete_knowledge(
     knowledge_service.delete_knowledge(db, user, knowledge_id)
     db.commit()
     return {"ok": True}
+
+
+@router.post("/{knowledge_id}/suggest-children", response_model=KnowledgeSuggestOut)
+def suggest_children(
+    knowledge_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """AI 扩展：为知识点生成子分支建议（只读，入库需用户确认后走 POST /knowledge）。"""
+    suggestions = knowledge_service.suggest_children(db, user, knowledge_id)
+    return KnowledgeSuggestOut(suggestions=suggestions)

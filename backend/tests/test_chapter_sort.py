@@ -48,3 +48,38 @@ def test_sort_unknown_last():
     assert result[1] == "第二章"
     assert "AI 生成" in result[2:]
     assert "附录" in result[2:]
+
+
+# ── 思维导图多语言排序（mindmap_service._sort_key） ──
+
+
+def test_sort_key_roman_numerals():
+    """罗马数字章节正确排序：Chapter IV 在 Chapter X 前。"""
+    from services.mindmap_service import _sort_key
+
+    names = ["Chapter X", "Chapter IV", "Chapter II", "Chapter VIII"]
+    assert sorted(names, key=_sort_key) == [
+        "Chapter II", "Chapter IV", "Chapter VIII", "Chapter X",
+    ]
+
+
+def test_sort_key_part_and_unit():
+    """外语教材分层：Part A < Part B；Unit 2 < Unit 10（数字序而非字典序）。"""
+    from services.mindmap_service import _sort_key
+
+    parts = sorted(["Part B", "Part A"], key=_sort_key)
+    assert parts == ["Part A", "Part B"]
+    units = sorted(["Unit 10", "Unit 2", "Unit 5"], key=_sort_key)
+    assert units == ["Unit 2", "Unit 5", "Unit 10"]
+
+
+def test_sort_key_mixed_languages():
+    """混合语言文档：数字编号与 Chapter 同层有序，无编号排最后。"""
+    from services.mindmap_service import _sort_key
+
+    names = ["附录", "Chapter 1", "2. Methods", "Chapter 3", "1. Introduction"]
+    result = sorted(names, key=_sort_key)
+    # 数字编号与 Chapter 同层有序（按编号），无编号的"附录"排最后
+    assert result.index("1. Introduction") < result.index("2. Methods")
+    assert result.index("2. Methods") < result.index("Chapter 3")
+    assert result[-1] == "附录"

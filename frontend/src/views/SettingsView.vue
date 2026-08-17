@@ -91,6 +91,28 @@ async function createWorkbook() {
   await loadWorkbooks()
 }
 
+const deletingWbId = ref<number | null>(null)
+const confirmWbId = ref<number | null>(null)
+
+async function deleteWorkbook(wb: Workbook) {
+  if (confirmWbId.value !== wb.id) {
+    confirmWbId.value = wb.id
+    setTimeout(() => (confirmWbId.value = null), 5000)
+    return
+  }
+  deletingWbId.value = wb.id
+  confirmWbId.value = null
+  try {
+    await workbookApi.remove(wb.id)
+    showMsg(`练习册「${wb.name}」已删除`)
+    await loadWorkbooks()
+  } catch (e: any) {
+    showMsg(`删除失败：${e.message || '未知错误'}`)
+  } finally {
+    deletingWbId.value = null
+  }
+}
+
 async function loadAiSettings() {
   try {
     aiSettings.value = await settingsApi.getAi()
@@ -201,10 +223,20 @@ onMounted(() => {
       </div>
 
       <div v-for="wb in workbooks" :key="wb.id" class="flex items-center justify-between px-5 py-3 transition hover:bg-slate-50 dark:hover:bg-slate-800/40">
-        <div>
+        <div class="min-w-0">
           <p class="text-sm font-medium text-slate-700 dark:text-slate-200">{{ wb.name }}</p>
           <p class="mt-0.5 text-xs text-slate-400">{{ wb.description || '无描述' }} · 创建于 {{ wb.created_at?.slice(0, 10) }}</p>
         </div>
+        <button
+          class="btn-icon shrink-0"
+          :class="confirmWbId === wb.id ? '!text-white !bg-red-500 hover:!bg-red-600' : 'hover:!text-red-500'"
+          :title="confirmWbId === wb.id ? '再次点击确认删除' : '删除练习册'"
+          :disabled="deletingWbId === wb.id"
+          @click="deleteWorkbook(wb)"
+        >
+          <RefreshCw v-if="deletingWbId === wb.id" :size="14" class="animate-spin" />
+          <Trash2 v-else :size="14" />
+        </button>
       </div>
 
       <p v-if="workbooks.length === 0" class="px-5 py-6 text-center text-xs text-slate-400">还没有练习册，点击"新建"创建一个。</p>

@@ -52,6 +52,7 @@ export const workbookApi = {
   list: () => api.get<Workbook[]>('/workbooks'),
   create: (name: string, description?: string) =>
     api.post<Workbook>('/workbooks', { name, description }),
+  remove: (id: number) => api.del<{ ok: boolean }>(`/workbooks/${id}`),
 }
 
 // ── 题库 ────────────────────────────────────────────────
@@ -79,6 +80,11 @@ export const questionApi = {
 }
 
 // ── 知识点 ──────────────────────────────────────────────
+export interface KnowledgeSuggestion {
+  name: string
+  description: string | null
+}
+
 export const knowledgeApi = {
   list: (workbookId: number, page?: number, pageSize?: number) => {
     const params = new URLSearchParams({ workbook_id: String(workbookId) })
@@ -86,6 +92,9 @@ export const knowledgeApi = {
     if (pageSize != null) params.set('page_size', String(pageSize))
     return api.get<Knowledge[]>(`/knowledge?${params.toString()}`)
   },
+  create: (body: Record<string, unknown>) => api.post<Knowledge>('/knowledge', body),
+  suggestChildren: (knowledgeId: number) =>
+    api.post<{ suggestions: KnowledgeSuggestion[] }>(`/knowledge/${knowledgeId}/suggest-children`),
 }
 
 // ── 刷题 ────────────────────────────────────────────────

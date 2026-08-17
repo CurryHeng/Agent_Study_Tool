@@ -48,3 +48,7 @@ docs/.obsidian/
 # Playwright
 frontend/test-results/
 frontend/playwright-report/
+
+# IDE / local runtime
+.vs/
+server/data/

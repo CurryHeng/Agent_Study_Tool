@@ -27,3 +27,14 @@ class KnowledgeOut(BaseModel):
     description: str | None
     level: int
     source_document_id: int | None
+
+
+class KnowledgeSuggestion(BaseModel):
+    """AI 扩展建议的子知识点（P2-3）。"""
+
+    name: str = Field(min_length=1, max_length=255)
+    description: str | None = None
+
+
+class KnowledgeSuggestOut(BaseModel):
+    suggestions: list[KnowledgeSuggestion]

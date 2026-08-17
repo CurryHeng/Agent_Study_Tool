@@ -166,7 +166,12 @@ _CODE_FENCE_RE = re.compile(r"```(?:json)?|```")
 def extract_knowledge_from_chunk(
     llm, chunk_text: str, covered: list[str] | None = None
 ) -> list[dict]:
-    """从单个文本块提取知识点，返回结构化数组（LLM 调用/解析失败均返回空数组）。"""
+    """从单个文本块提取知识点（平铺数组，docs §4.1 知识专家 Pipeline 格式）。
+
+    LLM 调用/解析失败均返回空数组。
+    """
+    from parsers.text_utils import _clean_kp_name
+
     covered = covered or []
     covered_str = f"\n\n已覆盖知识点（不要重复提取）: {'、'.join(covered[:50])}" if covered else ""
     try:
@@ -176,7 +181,17 @@ def extract_knowledge_from_chunk(
         items = json.loads(m.group(0) if m else raw)
         if not isinstance(items, list):
             return []
-        return [it for it in items if isinstance(it, dict) and it.get("name")]
+        result = []
+        for it in items:
+            if not isinstance(it, dict) or not it.get("name"):
+                continue
+            clean = _clean_kp_name(str(it["name"]))
+            if clean is None:
+                continue
+            it = dict(it)
+            it["name"] = clean
+            result.append(it)
+        return result
     except Exception:
         return []
 

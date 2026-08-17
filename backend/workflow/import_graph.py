@@ -30,6 +30,20 @@ from services.structure_extract import (
 MAX_RETRIES = 2  # 校验失败最多重试 2 次（共 3 次尝试）
 MAX_FULL_EXTRACT_CHUNKS = 30  # 全量提取的 LLM 调用上限（同步上传链路，须限制延迟）
 
+
+def _sections_quality_ok(sections: list[Section]) -> bool:
+    """评估章节识别质量（docs：无有效章节时 LLM 章节理解）。
+
+    章节识别破碎的标志：平均每章正文段落数极低（公式行/碎片被误判为标题，
+    每个"章节"后面几乎没有正文）。有正文支撑的章节占比 ≥ 50% 才视为有效。
+    """
+    if len(sections) <= 1:
+        return False
+    total_paras = sum(len(s.paragraphs) for s in sections)
+    if total_paras == 0:
+        return False
+    return total_paras / len(sections) >= 0.5
+
 CHAPTER_SYSTEM = (
     "你是一个文档结构分析器。给定一段文本，识别其中的章节结构。"
     '输出纯 JSON 对象：{"sections":[{"title":"...","level":1,"paragraphs":["..."]}]}。'
@@ -276,8 +290,11 @@ def build_import_graph(cache_path=None, llm=None, decision_llm=None):
 
     # ── 路由 ──
     def route_after_entry(state: ImportState) -> str:
-        # 无有效章节（仅 fallback"全文"或无 sections）→ 需要 Document Agent 理解章节
-        return "document_agent" if len(state.get("sections") or []) <= 1 else "knowledge_agent"
+        # 无有效章节 或 章节识别质量差（破碎标题多）→ Document Agent LLM 章节理解
+        sections = state.get("sections") or []
+        if _sections_quality_ok(sections):
+            return "knowledge_agent"
+        return "document_agent"
 
     def route_after_validate(state: ImportState) -> str:
         if state.get("validation", {}).get("valid"):

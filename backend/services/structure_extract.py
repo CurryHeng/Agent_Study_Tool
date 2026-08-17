@@ -7,6 +7,8 @@
 import re
 from dataclasses import dataclass, field
 
+from parsers.text_utils import _TERM_CLEAN_RE, _clean_kp_name
+
 # ── 数据结构 ────────────────────────────────────────────────────────────
 
 
@@ -87,6 +89,10 @@ def detect_language(content: str) -> str:
     if latin > total * 0.5:
         # 用停用词密度区分英语和其他拉丁字母语言
         stopword_hits = len(_EN_STOPWORDS.findall(content))
+        # 短文本（如单页笔记）停用词样本少，阈值放宽：
+        # 只要出现任一英语停用词即判 en；长文本维持 2% 密度防法语误判
+        if latin < 300:
+            return "en" if stopword_hits >= 1 else "other"
         return "en" if stopword_hits > latin * 0.02 else "other"
     return "other"
 
@@ -121,7 +127,9 @@ _ZH = LangPatterns(
         re.compile(r"(?:相比于|相对于|相较|相较于)(.{2,40})[，,]\s*(.{2,40})"),
     ],
     list_intro_re=re.compile(
-        r"(?:分为|包括|包含|有以下|有如下|以下几种|有如下几种|以下几[点方面类]|如下几[点方面类])[：:]?\s*$"
+        r"(?:分为|包括|包含|有以下|有如下|以下几种|有如下几种|以下几[点方面类]|如下几[点方面类])"
+        r"(?:[一二三四五六七八九十百0-9]{1,3}[点种类型个])?"  # 数字量词：分为五类
+        r"[：:]?\s*$"
     ),
     skip_prefixes=re.compile(
         r"^(?:但是|然而|无论|如果|因为|所以|虽然|而且|并且|因此|于是|然后|接着|最后|首先"
@@ -135,6 +143,8 @@ _EN = LangPatterns(
     heading_patterns=[
         re.compile(r"^(?:Chapter|CHAPTER)\s+(\d+|[IVXLCDM]+)[.:\s]*(.*)$"),
         re.compile(r"^(?:Section|SECTION)\s+(\d+(?:\.\d+)*)[.:\s]*(.*)$"),
+        # 外语教材常见分层：Part I / Unit 3 / Lesson 2 / Module 4
+        re.compile(r"^(?:Part|UNIT|Unit|Lesson|Module)\s+(\d+|[A-Z]+|[IVXLCDM]+)[.:\s]*(.*)$"),
         re.compile(r"^(\d+(?:\.\d+)+)[\s.]+(.+)$"),
     ],
     def_patterns=[
@@ -162,7 +172,12 @@ _EN = LangPatterns(
         ),
     ],
     list_intro_re=re.compile(
-        r"(?:includes?|contains?|consists? of|as follows|the following)[:]?\s*$",
+        # 引导句式：includes/following 类 + 数量词类（"Three types:"）
+        r"(?:(?:includes?|contains?|consists? of|as follows|the following)"
+        r"|(?:\b(?:three|four|five|six|seven|eight|nine|ten|two|several|various|"
+        r"multiple|different)\s+(?:types?|kinds?|categories?|ways?|steps?|"
+        r"parts?|levels?|approaches?|methods?|forms?|classes?))"
+        r")[:]?\s*$",
         re.IGNORECASE,
     ),
     skip_prefixes=re.compile(
@@ -192,12 +207,10 @@ _LIST_ITEM_RE = re.compile(r"^[-*•·]\s+(.+)$|^(\d+)[.、)）]\s*(.+)$|^[（(]
 
 _SHORT_WORD_RE = re.compile(r"^[a-z]{1,3}$", re.IGNORECASE)
 _PUNCT_ONLY_RE = re.compile(r"^[，。、；：！？]$")
-_TERM_CLEAN_RE = re.compile(r"[，。、；：,.;:]+\s*$")
 _BAD_DEF_TERM_RE = re.compile(r"(?:是否|要不要|能不能|可不可以)")
 _BAD_DEF_SUFFIX_RE = re.compile(
     r"(?:但是|然而|如果|因为|所以|虽然|注意|提示|由于|之后|以后|目前|现在)$"
 )
-
 
 def extract_structure_from_text(content: str) -> StructureResult:
     lines = content.split("\n")
@@ -381,13 +394,16 @@ def build_knowledge_from_structure(structure: StructureResult, file_name: str) -
         nonlocal kp_id
         if not ch:
             return
-        if any(kp["name"] == name for kp in ch["knowledge_points"]):
+        clean = _clean_kp_name(name)
+        if clean is None:
+            return
+        if any(kp["name"] == clean for kp in ch["knowledge_points"]):
             return
         kp_id += 1
         ch["knowledge_points"].append(
             {
                 "id": f"kp_{kp_id:03d}",
-                "name": name,
+                "name": clean,
                 "importance": importance,
                 "difficulty": difficulty,
             }
@@ -413,8 +429,7 @@ def build_knowledge_from_structure(structure: StructureResult, file_name: str) -
         ch = _find_chapter_for_line(li.line, structure.headings, chapters)
         if not ch:
             continue
-        name = li.item[:40] + "…" if len(li.item) > 40 else li.item
-        add_point(ch, name, 3, 2)
+        add_point(ch, li.item, 3, 2)
 
     defined_terms = {d.term for d in structure.definitions}
     for t in structure.terms:

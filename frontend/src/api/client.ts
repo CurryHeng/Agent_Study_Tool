@@ -73,18 +73,32 @@ export class ApiError extends Error {
   }
 }
 
+const DEFAULT_TIMEOUT_MS = 120_000  // LLM 端点最长可达数十秒；超时终止等待并提示
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`
 
-  const doFetch = () =>
-    fetch(`/api${path}`, {
+  const doFetch = () => {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), DEFAULT_TIMEOUT_MS)
+    const p = fetch(`/api${path}`, {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
+      signal: ctrl.signal,
     })
+    p.finally(() => clearTimeout(timer))
+    return p
+  }
 
-  let resp = await doFetch()
+  let resp: Response
+  try {
+    resp = await doFetch()
+  } catch (err: any) {
+    if (err?.name === 'AbortError') throw new ApiError('请求超时，请重试', 0)
+    throw new ApiError('网络不可用', 0)
+  }
 
   if (resp.status === 401 && refreshToken) {
     const refreshed = await doRefresh()
@@ -107,14 +121,26 @@ async function requestForm<T>(method: string, path: string, form: FormData): Pro
   const headers: Record<string, string> = {}
   if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`
 
-  const doFetch = () =>
-    fetch(`/api${path}`, {
+  const doFetch = () => {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), DEFAULT_TIMEOUT_MS)
+    const p = fetch(`/api${path}`, {
       method,
       headers,
       body: form,
+      signal: ctrl.signal,
     })
+    p.finally(() => clearTimeout(timer))
+    return p
+  }
 
-  let resp = await doFetch()
+  let resp: Response
+  try {
+    resp = await doFetch()
+  } catch (err: any) {
+    if (err?.name === 'AbortError') throw new ApiError('请求超时，请重试', 0)
+    throw new ApiError('网络不可用', 0)
+  }
 
   if (resp.status === 401 && refreshToken) {
     const refreshed = await doRefresh()
