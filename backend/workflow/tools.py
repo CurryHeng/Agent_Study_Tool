@@ -1,5 +1,5 @@
 """助手·导师可调用的薄工具层：只做参数、权限与 Service 适配。"""
-from langchain_core.tools import StructuredTool
+from langchain_core.tools import StructuredTool, ToolException
 from pydantic import BaseModel, Field
 
 from models.enums import QuestionType
@@ -145,5 +145,24 @@ def build_tools(db, user, llm) -> list[StructuredTool]:
         ("delete_knowledge_node", "提出删除知识点；用户确认前不会删除",
          KnowledgeInput, delete_knowledge_node),
     ]
-    return [StructuredTool.from_function(name=name, description=desc,
-            args_schema=schema, func=fn) for name, desc, schema, fn in specs]
+
+    def agent_safe(fn):
+        """把预期业务拒绝交还给 ReAct，避免整个聊天请求变成 4xx/5xx。"""
+        def wrapped(*args, **kwargs):
+            try:
+                return fn(*args, **kwargs)
+            except access.AccessError as exc:
+                message = exc.message
+                if message == "无权操作该知识点":
+                    message = "该知识点属于系统或其他用户，只读，不能修改或删除"
+                raise ToolException(message) from exc
+
+        return wrapped
+
+    return [StructuredTool.from_function(
+        name=name,
+        description=desc,
+        args_schema=schema,
+        func=agent_safe(fn),
+        handle_tool_error=True,
+    ) for name, desc, schema, fn in specs]

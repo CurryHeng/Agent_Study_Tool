@@ -9,7 +9,6 @@ from models import AgentTask, Knowledge, Question, User
 from models.enums import AgentTaskStatus
 from schemas.generation import GeneratedQuestion, ReviewResult
 from services import agent_service, generation_service
-from services.access import AccessError
 from workflow.graph import RECURSION_LIMIT
 from workflow.tools import GenerateInput, build_tools
 
@@ -237,8 +236,40 @@ def test_tools_include_read_layer_and_enforce_permissions(session, registered_us
             "list_documents", "get_questions", "generate_questions",
             "add_knowledge_node", "update_knowledge_node",
             "delete_knowledge_node"} <= set(tools)
-    with pytest.raises(AccessError):
-        tools["get_knowledge_tree"].invoke({"workbook_id": 999999})
+    assert tools["get_knowledge_tree"].invoke({
+        "workbook_id": 999999
+    }) == "练习册不存在"
+
+
+def test_readonly_knowledge_write_denial_is_returned_to_agent(
+    client, session, registered_user
+):
+    user = _user(session, registered_user)
+    other = client.post(
+        "/api/auth/register",
+        json={"username": "readonly-owner", "email": "readonly@example.com",
+              "password": "password123"},
+    ).json()
+    other_headers = {"Authorization": f"Bearer {other['access_token']}"}
+    other_workbook = client.post(
+        "/api/workbooks",
+        json={"name": "其他用户练习册"},
+        headers=other_headers,
+    ).json()
+    other_node = client.post(
+        "/api/knowledge",
+        json={"workbook_id": other_workbook["id"], "name": "只读知识点",
+              "level": 0},
+        headers=other_headers,
+    ).json()
+    tools = {tool.name: tool for tool in build_tools(session, user, object())}
+
+    result = tools["delete_knowledge_node"].invoke({
+        "knowledge_id": other_node["id"]
+    })
+
+    assert "只读" in result
+    assert "不能修改或删除" in result
 
 
 def test_agent_chat_endpoint_contract(client, auth_headers, monkeypatch):
