@@ -5,8 +5,8 @@ from sqlalchemy.orm import Session
 from api.deps import get_current_user
 from db.session import get_db
 from models import User
-from schemas.wrong_record import WrongRecordOut, WrongRecordUpdate
-from services import wrong_record_service
+from schemas.wrong_record import WrongReasonAnalysis, WrongRecordOut, WrongRecordUpdate
+from services import coach_service, wrong_record_service
 
 router = APIRouter(prefix="/api/wrong-records", tags=["wrong-records"])
 
@@ -35,5 +35,16 @@ def update_wrong_record(
     out = wrong_record_service.update_wrong_record(
         db, user, record_id, body.model_dump(exclude_unset=True)
     )
+    db.commit()
+    return out
+
+
+@router.post("/{record_id}/analyze", response_model=WrongReasonAnalysis)
+def analyze_wrong_record(
+    record_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    out = coach_service.analyze_wrong_reason(db, user, record_id)
     db.commit()
     return out

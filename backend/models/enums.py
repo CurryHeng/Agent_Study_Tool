@@ -47,3 +47,8 @@ class AgentTaskStatus(StrEnum):
 CHOICE_TYPES = frozenset(
     {QuestionType.single_choice, QuestionType.multiple_choice, QuestionType.true_false}
 )
+
+# 错因类型（P1-1 契约 3：热力图按 reason_type 聚合，成员不得改动）
+REASON_TYPES = frozenset(
+    {"概念不清", "记忆遗忘", "审题偏差", "计算失误", "方法不当", "其他"}
+)
