@@ -13,6 +13,7 @@ import type {
   DocumentDetail,
   DueItem,
   GenerateResult,
+  GradeResult,
   Knowledge,
   MindMapNode,
   Question,
@@ -89,10 +90,14 @@ export const knowledgeApi = {
 
 // ── 刷题 ────────────────────────────────────────────────
 export const reviewApi = {
-  due: (limit = 20, favorites = false) =>
-    api.get<DueItem[]>(`/review/due?limit=${limit}${favorites ? '&favorites=true' : ''}`),
+  due: (limit = 20, favorites = false, includeAll = false) =>
+    api.get<DueItem[]>(
+      `/review/due?limit=${limit}${favorites ? '&favorites=true' : ''}${includeAll ? '&include_all=true' : ''}`,
+    ),
   answer: (questionId: number, body: Record<string, unknown>) =>
     api.post<AnswerResult>(`/questions/${questionId}/answer`, body),
+  grade: (questionId: number, userAnswer: string | null) =>
+    api.post<GradeResult>(`/questions/${questionId}/grade`, { user_answer: userAnswer }),
   favorite: (questionId: number) => api.post<ReviewCard>(`/review/${questionId}/favorite`),
 }
 

@@ -105,6 +105,12 @@ export interface AnswerResult {
   card: ReviewCard
 }
 
+export interface GradeResult {
+  is_correct: boolean | null
+  correct_answer: string
+  analysis: string | null
+}
+
 export interface SimilarQuestion {
   type: QuestionType
   content: string

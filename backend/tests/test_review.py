@@ -29,6 +29,15 @@ def test_grade_true_false():
     assert grading.grade_question(q, "false") is False
 
 
+def test_grade_true_false_normalized_variants():
+    q = _q(QuestionType.true_false, "true")
+    for ans in ("对", "对的", "是", "是的", "正确的", "yes", "y", "T"):
+        assert grading.grade_question(q, ans) is True
+    q2 = _q(QuestionType.true_false, "false")
+    for ans in ("错", "错的", "否", "不是", "不对", "错误的", "no", "n", "F"):
+        assert grading.grade_question(q2, ans) is True
+
+
 def test_grade_fill_blank():
     q = _q(QuestionType.fill_blank, "数据")
     assert grading.grade_question(q, "数据") is True
@@ -74,6 +83,36 @@ def test_grade_short_answer_llm_failure_degrades_to_none():
 
     q = _q(QuestionType.short_answer, "xxx")
     assert grading.grade_short_answer(q, "随便答", llm=BoomLLM()) is None
+
+
+# ── 填空题 LLM 判分（P1-8 多答案/近义）────────────────────
+def test_grade_fill_blank_exact_match_skips_llm():
+    q = _q(QuestionType.fill_blank, "反向传播算法")
+    llm = _JudgeLLM(False)
+    assert grading.grade_fill_blank(q, "反向传播算法", llm=llm) is True
+    assert llm.calls == 0  # 精确匹配不调用 LLM
+
+
+def test_grade_fill_blank_near_synonym_by_llm():
+    q = _q(QuestionType.fill_blank, "反向传播算法")
+    assert grading.grade_fill_blank(q, "BP算法", llm=_JudgeLLM(True)) is True
+    assert grading.grade_fill_blank(q, "梯度下降", llm=_JudgeLLM(False)) is False
+
+
+def test_grade_fill_blank_blank_is_wrong_without_llm():
+    q = _q(QuestionType.fill_blank, "反向传播算法")
+    llm = _JudgeLLM(True)
+    assert grading.grade_fill_blank(q, "   ", llm=llm) is False
+    assert llm.calls == 0  # 空白作答不调用 LLM
+
+
+def test_grade_fill_blank_llm_failure_degrades_to_false():
+    class BoomLLM:
+        def generate_json(self, system, user):
+            raise RuntimeError("LLM down")
+
+    q = _q(QuestionType.fill_blank, "反向传播算法")
+    assert grading.grade_fill_blank(q, "BP算法", llm=BoomLLM()) is False
 
 
 def _create_short_answer(client, headers, workbook):
@@ -140,6 +179,84 @@ def test_answer_short_answer_llm_down_degrades_to_self_rating(
     data = resp.json()
     assert data["is_correct"] is None  # 降级：不自动判题
     assert data["rating"] == "hard"  # 保留用户自评
+
+
+def _create_fill_blank(client, headers, workbook, answer="反向传播算法"):
+    return client.post(
+        "/api/questions",
+        json={
+            "workbook_id": workbook["id"],
+            "type": "fill_blank",
+            "content": "误差反向传播的简称是____算法。",
+            "answer": answer,
+        },
+        headers=headers,
+    ).json()
+
+
+def test_answer_fill_blank_near_synonym_by_llm(
+    client, auth_headers, workbook, session, monkeypatch
+):
+    monkeypatch.setattr("services.llm_service.get_llm", lambda: _JudgeLLM(True))
+    q = _create_fill_blank(client, auth_headers, workbook)
+    resp = client.post(
+        f"/api/questions/{q['id']}/answer",
+        json={"user_answer": "BP算法", "mode": "normal"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["is_correct"] is True
+    assert session.query(WrongRecord).count() == 0  # 判对不产生错题
+
+
+def test_answer_fill_blank_llm_wrong_creates_wrong_record(
+    client, auth_headers, workbook, session, monkeypatch
+):
+    monkeypatch.setattr("services.llm_service.get_llm", lambda: _JudgeLLM(False))
+    q = _create_fill_blank(client, auth_headers, workbook)
+    resp = client.post(
+        f"/api/questions/{q['id']}/answer",
+        json={"user_answer": "梯度下降", "mode": "normal"},
+        headers=auth_headers,
+    )
+    assert resp.json()["is_correct"] is False
+    assert session.query(WrongRecord).count() == 1
+
+
+def test_answer_fill_blank_llm_down_degrades_to_exact(
+    client, auth_headers, workbook, session, monkeypatch
+):
+    class BoomLLM:
+        def generate_json(self, system, user):
+            raise RuntimeError("LLM down")
+
+    monkeypatch.setattr("services.llm_service.get_llm", lambda: BoomLLM())
+    q = _create_fill_blank(client, auth_headers, workbook)
+    resp = client.post(
+        f"/api/questions/{q['id']}/answer",
+        json={"user_answer": "BP算法", "mode": "normal"},
+        headers=auth_headers,
+    )
+    assert resp.json()["is_correct"] is False  # LLM 不可用降级为精确匹配结果
+
+
+def test_grade_endpoint_returns_result_without_recording(
+    client, auth_headers, workbook, session, monkeypatch
+):
+    monkeypatch.setattr("services.llm_service.get_llm", lambda: _JudgeLLM(True))
+    q = _create_fill_blank(client, auth_headers, workbook)
+    resp = client.post(
+        f"/api/questions/{q['id']}/grade",
+        json={"user_answer": "BP算法"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["is_correct"] is True
+    assert data["correct_answer"] == "反向传播算法"
+    # 单独判分不落库（不产生答题/错题记录）
+    assert session.query(AnswerRecord).count() == 0
+    assert session.query(WrongRecord).count() == 0
 
 
 # ── 答题流程 ──────────────────────────────────────────────
@@ -228,6 +345,28 @@ def test_get_due(client, auth_headers, workbook):
     assert resp.status_code == 200
     items = resp.json()
     assert any(item["question"]["id"] == q["id"] for item in items)
+
+
+def test_get_due_include_all_includes_future_due(client, auth_headers, session, workbook):
+    from datetime import UTC, datetime, timedelta
+
+    q = _create_choice(client, auth_headers, workbook)
+    client.post(
+        f"/api/questions/{q['id']}/answer",
+        json={"user_answer": "B", "mode": "normal"},
+        headers=auth_headers,
+    )
+    card = session.query(ReviewCard).filter(ReviewCard.question_id == q["id"]).first()
+    card.due = datetime.now(UTC).replace(tzinfo=None) + timedelta(days=30)
+    session.commit()
+
+    default_items = client.get("/api/review/due?limit=100", headers=auth_headers).json()
+    assert not any(item["question"]["id"] == q["id"] for item in default_items)
+
+    all_items = client.get(
+        "/api/review/due?include_all=true&limit=100", headers=auth_headers
+    ).json()
+    assert any(item["question"]["id"] == q["id"] for item in all_items)
 
 
 def test_update_wrong_record_reason(client, auth_headers, workbook):

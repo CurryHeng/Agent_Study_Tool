@@ -13,8 +13,8 @@ export function isAutoGradable(type: QuestionType): boolean {
 
 function normalizeBool(v: string): string {
   const t = v.toLowerCase()
-  if (['true', 't', '1', '正确', '对', '是', 'yes', 'y'].includes(t)) return 'true'
-  if (['false', 'f', '0', '错误', '错', '否', 'no', 'n'].includes(t)) return 'false'
+  if (['true', 't', '1', '正确', '正确的', '对', '对的', '是', '是的', 'yes', 'y'].includes(t)) return 'true'
+  if (['false', 'f', '0', '错误', '错误的', '错', '错的', '不对', '否', '不是', 'no', 'n'].includes(t)) return 'false'
   return t
 }
 

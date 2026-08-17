@@ -43,6 +43,16 @@ class AnswerResponse(BaseModel):
     card: ReviewCardOut
 
 
+class GradeRequest(BaseModel):
+    user_answer: str | None = None
+
+
+class GradeResponse(BaseModel):
+    is_correct: bool | None
+    correct_answer: str
+    analysis: str | None
+
+
 class DueItem(BaseModel):
     question: QuestionOut
     card: ReviewCardOut
