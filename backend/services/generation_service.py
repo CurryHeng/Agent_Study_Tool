@@ -26,8 +26,22 @@ from services.question_validator import validate_question
 
 MAX_ATTEMPTS = 3  # 生成批次最多尝试 3 次（对应"审核失败最多重试 2 次"）
 
-GENERATION_SYSTEM = """你是一名出题专家，根据给定课程知识点生成高质量练习题。
-严格只输出 JSON，不要输出解释或多余文本。JSON 格式如下：
+# 生成与审核的采样温度：生成略高以增加多样性、打散答案位置；审核取 0 保证判定稳定。
+GENERATION_TEMPERATURE = 0.8
+REVIEW_TEMPERATURE = 0.0
+
+# 审题通过的最低质量分（0~1）。LLM 判定 passed 但评分过低时视为驳回，防止错题漏网。
+PASS_SCORE_THRESHOLD = 0.5
+
+GENERATION_SYSTEM = """你是一名出题专家，根据给定的课程知识点与参考资料，生成高质量练习题。
+
+【硬性要求】
+- 严格只输出 JSON，不要输出解释或多余文本。
+- 题目必须基于参考资料，不得凭空编造与资料无关的内容。
+- 每道题独立、完整、无歧义，可脱离上下文单独作答。
+- 避免生成彼此高度重复的题目，尽量覆盖知识点的不同侧面。
+
+【输出格式】
 {
   "questions": [
     {
@@ -40,17 +54,45 @@ GENERATION_SYSTEM = """你是一名出题专家，根据给定课程知识点生
     }
   ]
 }
-规则：
-- type 可选 single_choice / multiple_choice / true_false / fill_blank / short_answer
-- 选择题必填 options(>=2)；单选/多选 answer 填字母(如 "A" 或 "ABD")
-- 判断填 true/false；填空/简答填文本
-- difficulty 范围 1-5
+
+【各题型规则】
+- single_choice（单选）：options 至少 4 个，且必须恰好只有一个正确选项；
+  answer 填该选项字母（如 "A"）。
+- multiple_choice（多选）：options 至少 4 个，至少 2 个正确选项；
+  answer 填多个字母（如 "ABD"，按字母序）。
+- true_false（判断）：题干为一句可判真假的陈述；answer 填 "true" 或 "false"；不要 options。
+- fill_blank（填空）：题干中用 ____ 标出空位；answer 填标准答案文本；不要 options。
+- short_answer（简答）：题干为开放式问题；answer 填参考答案要点；不要 options。
+
+【答案分布（单选）】
+- 单选题正确答案的字母必须均匀分布在 A/B/C/D 之间，不得集中或全为同一字母。
+
+【难度】
+- difficulty 取 1-5：1=记忆型基础题，2=理解题，3=应用题，4=分析题，5=综合难题。
+- 严格按请求的难度值出题；干扰项要有迷惑性，但不能出现第二个正确答案。
 """
 
-REVIEW_SYSTEM = """你是一名严格的题目审核员。审核题目质量，检查：
-1) 答案是否正确；2) 题目与知识点是否匹配；3) 表述是否清晰无歧义；4) 选项是否合理；5) 难度是否恰当。
-严格只输出 JSON，格式：
-{"passed": true, "score": 0.0, "issues": ["问题描述"]}"""
+REVIEW_SYSTEM = """你是一名严格的题目审核员。逐项审核题目质量，只有完全合格才判通过。
+
+【审核清单】
+1. 答案正确性：答案是否事实正确，是否与参考资料一致。
+2. 答案格式：选择题答案字母必须存在于选项中；单选必须恰好一个正确选项，
+   多选至少两个；判断题答案必须是 true/false。
+3. 唯一性：单选题不得出现多个正确选项；干扰项不得与正确答案冲突。
+4. 表述清晰：题干无歧义、无残缺，可独立作答。
+5. 难度恰当：标注难度与实际难度相符。
+
+【判定规则（务必严格遵守）】
+- 存在以下任一硬伤 → passed=false，issues 必须逐条写明具体问题：
+  a) 答案事实错误或与参考资料矛盾；
+  b) 选择题答案字母不在选项中；单选题有多个正确选项；多选正确选项不足两个；
+  c) 题干有歧义或残缺，无法独立作答；
+  d) 难度标注严重不符。
+- 无任何硬伤 → passed=true，issues 返回空数组 []（不要写建议）。
+- score 为 0.0~1.0 的质量分：1.0 完美，0.6 及格；无硬伤时 score >= 0.6。
+
+严格只输出 JSON，不要多余文本：
+{"passed": true, "score": 0.85, "issues": []}"""
 
 
 def _generation_user_prompt(
@@ -101,6 +143,7 @@ def generate_batch(
         _generation_user_prompt(
             workbook_name, knowledge_name, question_type, count, difficulty, context
         ),
+        temperature=GENERATION_TEMPERATURE,
     )
     try:
         output = GenerationOutput.model_validate(raw)
@@ -124,14 +167,26 @@ def review_question(
     knowledge_name: str,
     context: str,
 ) -> ReviewResult | None:
-    """审核单道题，返回 ReviewResult；解析失败返回 None。"""
+    """审核单道题，返回 ReviewResult；解析失败返回 None。
+
+    判定以 LLM 的 passed 为准，另加评分阈值兜底：LLM 判 passed 但 score
+    低于 PASS_SCORE_THRESHOLD 时视为驳回，避免错题漏网。
+    """
     try:
         raw = llm.generate_json(
-            REVIEW_SYSTEM, _review_user_prompt(question, knowledge_name, context)
+            REVIEW_SYSTEM,
+            _review_user_prompt(question, knowledge_name, context),
+            temperature=REVIEW_TEMPERATURE,
         )
-        return ReviewResult.model_validate(raw)
+        result = ReviewResult.model_validate(raw)
     except (ValidationError, ValueError):
         return None
+    result.score = max(0.0, min(1.0, result.score))
+    if result.passed and result.score < PASS_SCORE_THRESHOLD:
+        result.passed = False
+        if not result.issues:
+            result.issues = ["审题评分过低"]
+    return result
 
 
 def save_questions(

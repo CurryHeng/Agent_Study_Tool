@@ -39,29 +39,37 @@ class LLMService:
         self._base_url = cfg["base_url"]
         self._chat = None
 
+    def _make_chat(self, temperature: float | None = None):
+        from langchain_openai import ChatOpenAI
+
+        kwargs = {
+            "model": self._model,
+            "api_key": self._api_key,
+            "base_url": self._base_url,
+            "request_timeout": 60,
+        }
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+        return ChatOpenAI(**kwargs)
+
     def _get_chat(self):
         if not self._api_key:
             raise LLMNotConfiguredError()
         if self._chat is None:
-            from langchain_openai import ChatOpenAI
-
-            self._chat = ChatOpenAI(
-                model=self._model,
-                api_key=self._api_key,
-                base_url=self._base_url,
-            )
+            self._chat = self._make_chat()
         return self._chat
 
-    def generate(self, system: str, user: str) -> str:
+    def generate(self, system: str, user: str, temperature: float | None = None) -> str:
         from langchain_core.messages import HumanMessage, SystemMessage
 
-        resp = self._get_chat().invoke(
-            [SystemMessage(content=system), HumanMessage(content=user)]
-        )
+        chat = self._make_chat(temperature) if temperature is not None else self._get_chat()
+        resp = chat.invoke([SystemMessage(content=system), HumanMessage(content=user)])
         return resp.content
 
-    def generate_json(self, system: str, user: str) -> dict:
-        return extract_json(self.generate(system, user))
+    def generate_json(
+        self, system: str, user: str, temperature: float | None = None
+    ) -> dict:
+        return extract_json(self.generate(system, user, temperature))
 
     def chat_model(self):
         """返回供 LangGraph 使用的聊天模型，模型创建仍统一由本服务负责。"""

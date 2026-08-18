@@ -16,7 +16,7 @@ class MockLLM:
         self.responses = list(responses)
         self.calls = 0
 
-    def generate_json(self, system, user):
+    def generate_json(self, system, user, temperature=None):
         self.calls += 1
         if not self.responses:
             return {"questions": []}
